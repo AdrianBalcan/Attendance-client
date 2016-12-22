@@ -1,0 +1,227 @@
+<html>
+<head>
+  <link href="/css/style.css" rel="stylesheet" type="text/css"\>
+  <link href="/css/clock.css" rel="stylesheet" type="text/css"\>
+  <link href="/css/font-awesome.min.css" rel="stylesheet" type="text/css"\>
+</head>
+<body>
+  <div class="notifyTopBar" id="notifyTopBar">
+    <h1><div id="notifyTopBarText"></div></h1>
+  </div>
+  <div class="notify" id="notify">
+    <div id="enroll">
+       <h1>
+          Inregistrare angajat:</br>
+          <div id="enrollName"></div>
+       </h1>
+    </div>
+    <h1><div id="notifyText"></div></h1>
+  </div>
+
+  <div class="notify" id="disconnected"><h1>EROARE CONEXIUNE!</br>Nu exista conexiune cu serverul!</h1></div>
+  <div class="notify" id="scanner_disconnected"><h1>EROARE SCANNER!</br>Nu exista conexiune cu scanerul!</h1></div>
+
+<!--  <script src="socket.io/socket.io.js"></script>
+-->
+  <script src="js/jquery.min.js"></script>
+  <script src="js/clock.js"></script>
+  <script type="text/javascript" src="js/underscore-min1.3.3.js"></script>
+
+<div id="left">
+  <div class="clock">
+  <div id="Date"></div>
+    <ul>
+        <li id="hours"></li>
+        <li id="point">:</li>
+        <li id="min"></li>
+        <li id="point">:</li>
+        <li id="sec"></li>
+    </ul>
+  </div>
+</div>
+
+<div id="footer">
+pontaj-s01 - Suport Tehnic: 0747 390 252 sau 0737 515 073
+</div>
+
+<script>
+        function doneTable(rawData) {
+            var data = { target:rawData };
+            var template = _.template( $("#tpl-done").text() );
+            $("#done_table").html( template(data) );
+	}
+        function idDetailsTable(rawData) {
+            console.log(rawData);
+            var data = { target:rawData };
+            var template = _.template( $("#tpl-id_details_table").text() );
+            $("#id_details_table1").html( template(data) );
+            $("#id_details_table2").html( template(data) );
+        }
+var ok;
+var err_cid;
+var scanned;
+var wsReconnect;
+
+function startWebSocket(){
+	var ws = new WebSocket('ws://'+window.location.hostname+':8888/ws');
+	ws.onopen = function () {
+		console.log("connected");
+		$('#disconnected').hide();
+                clearTimeout(wsReconnect);
+	};
+	ws.onclose = function () {
+		console.log("disconnected");
+		$('#disconnected').show();
+                wsReconnect = setTimeout(startWebSocket(), 5000);
+        }
+        ws.onmessage = function (data) {
+                data = JSON.parse(data.data);
+                console.log(data.message);
+                switch(data.message) {
+                    case 'identify-ok':
+//     		        if(employee.inOut == 0){ 
+       			notify("green", "Bine ai venit "+data.name);
+//                      } else {
+//	                    notify("blue", "La revedere, "+employee.name);
+//                      }
+                        break;
+                    case 'identify-err':
+		        notify("red", "Amprenta neidentificata! Incearca din nou!");
+                        break;
+                    case 'no-fingerprint':
+		        notify("red", "Eroare! Conexiune inexistenta cu cititorul de amprente!");
+                        break;
+                    case 'clear':
+			clearNotify();
+			break;
+                }
+        }
+}
+
+  startWebSocket();
+
+//	ws.onmessage = function (data) {
+//                        console.log(data);
+//    			console.log('clean: err: '+err_cid+', ok: '+ok);
+//				clearTimeout(err_cid);
+//    			if(err_cid){
+//				$('#err_cid').hide();
+//				clearTimeout(err_cid);
+//				console.log('cleaning err_cid: '+err_cid);
+//			}
+//    			if(ok){
+//				$('#ok').hide();
+//				clearTimeout(ok);
+//				console.log('cleaning ok: '+ok);
+//			}
+//    			if(scanned){
+//				$('#scanned').hide();
+//				clearTimeout(scanned);
+//				console.log('cleaning scanned: '+scanned);
+//			}
+//			console.log(data);
+//		if(data.status == 1){
+//			$('#id').html(data.cid);
+//                        idDetailsTable(data.id_details);
+//			$('#ok').show();
+//    			ok = setTimeout(function() { $('#ok').hide() }, 2000);
+//			console.log("ok :"+ok);
+//			$('#container').html(data.htmldata);
+//		} else if(data.status == 2) {
+//			$('#scanned_id').html(data.cid);
+//                        idDetailsTable(data.id_details);
+//			$('#scanned').show();
+//    			scanned = setTimeout(function() { $('#scanned').hide() }, 10000);
+//			console.log("scanned :"+scanned);
+//			$('#container').html(data.htmldata);
+//		} else {
+//			$('#err_cid').show();
+//    			err_cid = setTimeout(function() { $('#err_cid').hide() }, 5000);
+//			console.log("err :"+err_cid);
+//		}
+//	};
+//	socket.on('identify-ok', function(employee){
+//	console.log(employee);
+//           if(employee.inOut == 0){ 
+//	        notify("green", "Bine ai venit "+employee.name);
+//           } else {
+//	        notify("blue", "La revedere, "+employee.name);
+//           }
+//	});
+//	socket.on('identify-err', function(id){
+//		console.log('Nu am putut citi corect, te rog mai incearca odata!');
+//	        notify("red", "Amprenta neidentificata! Incearca din nou!");
+//	});
+//	socket.on('display-release', function(id){
+//		console.log('Ridica degetul de pe cititor, te rog!');
+//	});
+//	socket.on('enroll', function (param) {
+//		console.log('enroll: ' + param.enrollStep);
+//		if(param.enrollStep == 1){
+//                   notify("#202020", "Pasul " + param.enrollStep + " din 4: Scaneaza amprenta!", param.enrollName);
+//                } else {
+//                   notify("#202020", "Pasul " + param.enrollStep + " din 4: Scaneaza aceeasi amprenta ca in pasul precedent!", param.enrollName);
+//		}
+//	});
+//	socket.on('enroll-ok', function (param) {
+//                notify("green", "Pasul " + param.enrollStep + " din 4: Scanare Corecta!", param.enrollName);
+//		console.log('enroll_identify-ok');
+//	});
+//	socket.on('enroll-err', function (param) {
+//		if(param.enrollStep == 1){
+//                notify('red', "Pasul " + param.enrollStep + " din 4: Amprenta exista deja in baza de date! Incearca din nou cu alta amprenta!", param.enrollName);
+//		} else {
+//		console.log('enroll_identify-err: fingerprint found in db');
+//                notify('red', "Pasul " + param.enrollStep + " din 4: Eroare! Incearca din nou!", param.enrollName);
+//                }
+//	});
+//	socket.on('db-conn-err', function (enrollName) {
+//		console.log('enroll_identify');
+//                notify("yelow", "Nu exista connexiune cu baza de date!", enrollName);
+//	});
+//	socket.on('enrollIdentify', function (enrollName) {
+//		console.log('enroll_identify');
+//                notify("yelow", "Pasul 1 din 4: Scaneaza amprenta!", enrollName);
+//	});
+//	socket.on('enroll-identify-ok', function (enrollName) {
+//                notify("green", "Pasul 1 din 4: Scanare Corecta!", enrollName);
+//		console.log('enroll_identify-ok');
+//	});
+//	socket.on('enroll-identify-err', function (enrollName) {
+//		console.log('enroll_identify-err: fingerprint found in db');
+//                notify("red", "Eroare: Aceasta amprenta este inregistrata deja in baza de date!", enrollName);
+//	});
+//	socket.on('enroll1', function (enrollName) {
+//		console.log('enrollStart');
+//                notify("yelow", "Pasul 2 din 4: Scaneaza amprenta!", enrollName);
+//	});
+//	socket.on('clear', function () {
+//		console.log('clear');
+//		clearNotify();
+//	});
+    var clear;
+    function notify(color, msg, enrollName){
+        clearTimeout(clear);
+    if(!enrollName){
+        $('#enroll').hide();
+    } else {
+        $('#enroll').show(); 
+        $('#enrollName').html(enrollName);
+    }
+        $('#notify').css("background-color", color);
+	$('#notifyText').html(msg);
+	$('#notify').show();
+    }
+    function clearNotify(){
+	  clear = setTimeout(function(){
+	    $('#notify').hide();
+	}, 3000);
+    }
+    function notifyTopBar(color, msg){
+        $('#notifyTopBar').css("background-color", color);
+	$('#notifyTopBarText').html(msg);
+	$('#notifyTopBar').show();
+    }
+	</script>
+	</body>
+</html>
