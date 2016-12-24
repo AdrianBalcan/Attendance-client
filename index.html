@@ -15,14 +15,11 @@
           <div id="enrollName"></div>
        </h1>
     </div>
-    <h1><div id="notifyText"></div></h1>
+    <h2><div id="notifyText"></div></h2>
   </div>
 
-  <div class="notify" id="disconnected"><h1>EROARE CONEXIUNE!</br>Nu exista conexiune cu serverul!</h1></div>
-  <div class="notify" id="scanner_disconnected"><h1>EROARE SCANNER!</br>Nu exista conexiune cu scanerul!</h1></div>
+  <div class="notify" id="disconnected"><h1>EROARE SISTEM!</br>Eroare cod: 10</h1></div>
 
-<!--  <script src="socket.io/socket.io.js"></script>
--->
   <script src="js/jquery.min.js"></script>
   <script src="js/clock.js"></script>
   <script type="text/javascript" src="js/underscore-min1.3.3.js"></script>
@@ -78,6 +75,9 @@ function startWebSocket(){
                 data = JSON.parse(data.data);
                 console.log(data.message);
                 switch(data.message) {
+                    case 'no-devicegroup':
+                        notify("#202020", "Cod de activare a dispozitivului:</br>"+data.hw)
+                        break;
                     case 'identify-ok':
 //     		        if(employee.inOut == 0){ 
        			notify("green", "Bine ai venit "+data.name);

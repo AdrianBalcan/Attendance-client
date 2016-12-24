@@ -20,8 +20,42 @@ import sys
 import base64
 import uuid
 import websocket as websocketClient
+from pysqlcipher import dbapi2 as sqlite
+import datetime
 
 hw = "sp:"+base64.b64encode(str(uuid.getnode()))+"0"
+host = "ws://localhost:4000/socket/websocket/"
+pragma = "0jFr90a"
+conn = sqlite.connect('att')
+c = conn.cursor()
+c.execute("PRAGMA key='"+pragma+"'")
+try:
+    c.execute('''create table config (fingerprints_limit int, devicegroup int, date text)''')
+    c.execute("""insert into config values (0, null, '"""+str(datetime.datetime.now())+"""')""")
+    conn.commit()
+except Exception as e:
+    print(str(e))
+c.close()
+
+conn = sqlite.connect('att')
+c = conn.cursor()
+c.execute("PRAGMA key='"+pragma+"'")
+rows = c.execute("SELECT devicegroup FROM config;")
+for row in rows:
+    global devicegroup
+    devicegroup = row[0]
+c.close()
+
+def devicegroup():
+  
+  conn = sqlite.connect('att')
+  c = conn.cursor()
+  c.execute("PRAGMA key='"+pragma+"'")
+  rows = c.execute("SELECT devicegroup FROM config;")
+  for row in rows:
+      global devicegroup
+      devicegroup = row[0]
+  c.close()
 
 def on_open(ws):
     def run(*args):
@@ -36,36 +70,64 @@ def on_open(ws):
         }))
 
     thread.start_new_thread(run, ())
-    #thread(target = run).start()
+
+def on_send(message):
+    try:
+      ws.send(message)
+      print("sent: "+message)
+    except Exception as e:
+      print('---Exception message: ' + str(e))
 
 def on_message(ws, message):
     message = json.loads(message) 
-    print(message)
+    response = message["payload"]["response"]
+    print response
+    if(response["type"] == "devicegroup"):
+      global devicegroup
+      devicegroup = response["result"][0]
+      print devicegroup
+      conn = sqlite.connect('att')
+      c = conn.cursor()
+      c.execute("PRAGMA key='"+pragma+"'")
+      c.execute("""update config set devicegroup = """+devicegroup) 
+      conn.commit()
 
 def on_error(ws, error):
-    print(error)
-    time.sleep(10)
-    wsClient()
+    try:
+      print(error)
+      time.sleep(10)
+      wsClient()
+    except Exception as e:
+      print('---Exception message: ' + str(e))
+      time.sleep(10)
+      wsClient()
 
 def on_close(ws, status):
-    print("### closed ###")
-    time.sleep(10)
-    wsClient()
+    try:
+      print("### closed ###")
+      time.sleep(10)
+      wsClient()
+    except Exception as e:
+      print('---Exception message: ' + str(e))
+      time.sleep(10)
+      wsClient()
+
 
 def wsClient():
-    logging.info("Begin")
-    # websocket.enableTrace(True)
-    ws.run_forever(ping_interval=30, ping_timeout=10)
+    try:
+      global ws
+      ws = websocketClient.WebSocketApp(host)
+      logging.info("Begin")
+      ws.on_open = on_open
+      ws.on_message = on_message
+      ws.on_error = on_error
+      ws.run_forever(ping_interval=30, ping_timeout=10)
+    except Exception as e:
+      print('---Exception message: ' + str(e))
+      time.sleep(10)
+      wsClient()
 
-hw = 'sp:'+base64.b64encode(str(uuid.getnode()))+'0'
-host = "ws://localhost:4000/socket/websocket/"
-ws = websocketClient.WebSocketApp(host)
-ws.on_open = on_open
-ws.on_message = on_message
-ws.on_error = on_error
-#thread.wsClient()
-
-enrollStatus=True
+enrollStatus=False
 
 cl = []
 
@@ -85,29 +147,6 @@ class DeleteHandler(web.RequestHandler):
         delete(f, id)
         self.wfile.write("<html><body><h1>hi!</h1></body></html>")
 
-#class GetTemplateIndexHandler(web.RequestHandler):
-
-#class HelloSocket(wsClient.WebSocket):
-#
-#    def on_open(self):
-#        self.write('hello, world')
-#
-#    def on_message(self, data):
-#        print data
-#
-#    def on_ping(self):
-#        print 'I was pinged'
-#
-#    def on_pong(self):
-#        print 'I was ponged'
-#
-#    def on_close(self):
-#        print 'Socket closed.'
-#
-#
-#ws = HelloSocket('ws://localhost:4000/socket/websocket/')
-#ws.connect()
-
 class SocketHandler(websocket.WebSocketHandler):
    
     @staticmethod
@@ -121,6 +160,11 @@ class SocketHandler(websocket.WebSocketHandler):
     def open(self):
         if self not in cl:
             cl.append(self)
+        if not isinstance(devicegroup, int):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'no-devicegroup',
+                'hw': str(hw),
+            }))
 
     def on_close(self):
         if self in cl:
@@ -191,24 +235,40 @@ def httpServer():
     app.listen(8888)
     ioloop.IOLoop.instance().start()
 
+
 def fingerprint():
     ## Search for a finger
     ##
     ## Tries to initialize the sensor
-    try:
-        f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 115200, 0xFFFFFFFF, 0x00000000)
     
-        if ( f.verifyPassword() == False ):
-            raise ValueError('The given fingerprint sensor password is wrong!')
-    
-    except Exception as e:
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'no-fingerprint',
-        }))
-        print('The fingerprint sensor could not be initialized!')
-        print('Exception message: ' + str(e))
+    on_send(json.dumps({
+        "topic":hw,
+        "event":"new_msg",
+        "payload":json.dumps({
+            "type": "devicegroup",
+            "hw": hw 
+        }),
+        "ref":""
+    }))
+    print type(devicegroup)
+    if (isinstance(devicegroup, int)):
+        try:
+            f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 115200, 0xFFFFFFFF, 0x00000000)
+        
+            if ( f.verifyPassword() == False ):
+                raise ValueError('The given fingerprint sensor password is wrong!')
+        
+        except Exception as e:
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'no-fingerprint',
+            }))
+            print('The fingerprint sensor could not be initialized!')
+            print('Exception message: ' + str(e))
+            time.sleep(20)
+            sys.exc_clear()
+            fingerprint()
+    else:
         time.sleep(10)
-        sys.exc_clear()
         fingerprint()
 
     
@@ -258,15 +318,15 @@ def verify(f):
                 'message': 'identify-ok',
                 'name': str(positionNumber),
             }))
-           # ws.send(json.dumps({
-           #     "topic":hw,
-           #     "event":"new_msg",
-           #     "payload":json.dumps({
-           #         "type": "identify-ok",
-           #         "id": str(positionNumber),
-           #     }),
-           #     "ref":""
-           # }))
+            on_send(json.dumps({
+                "topic":hw,
+                "event":"new_msg",
+                "payload":json.dumps({
+                    "type": "identify-ok",
+                    "id": str(positionNumber),
+                }),
+                "ref":""
+            }))
 
             print('Found template at position #' + str(positionNumber))
             print('The accuracy score is: ' + str(accuracyScore))
