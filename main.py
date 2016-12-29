@@ -23,41 +23,73 @@ import websocket as websocketClient
 from pysqlcipher import dbapi2 as sqlite
 import datetime
 
+f = None
+wsconnected = 0 
 hw = "sp:"+base64.b64encode(str(uuid.getnode()))+"0"
 host = "ws://localhost:4000/socket/websocket/"
 pragma = "0jFr90a"
-conn = sqlite.connect('att')
-c = conn.cursor()
-c.execute("PRAGMA key='"+pragma+"'")
-try:
-    c.execute('''create table config (fingerprints_limit int, devicegroup int, date text)''')
-    c.execute("""insert into config values (0, null, '"""+str(datetime.datetime.now())+"""')""")
-    conn.commit()
-except Exception as e:
-    print(str(e))
-c.close()
+enrollStatus = False
 
-conn = sqlite.connect('att')
-c = conn.cursor()
-c.execute("PRAGMA key='"+pragma+"'")
-rows = c.execute("SELECT devicegroup FROM config;")
-for row in rows:
-    global devicegroup
-    devicegroup = row[0]
-c.close()
+class Sql():
+    conn = sqlite.connect('att', check_same_thread=False)
+    c = conn.cursor()
+    c.execute("PRAGMA key='"+pragma+"'")
 
-def devicegroup():
-  
-  conn = sqlite.connect('att')
-  c = conn.cursor()
-  c.execute("PRAGMA key='"+pragma+"'")
-  rows = c.execute("SELECT devicegroup FROM config;")
-  for row in rows:
-      global devicegroup
-      devicegroup = row[0]
-  c.close()
+    def create(self):
+        try:
+            Sql()
+            Sql.c.execute("create table configs (id, fingerprints_limit int, devicegroup int, date text)")
+            Sql.c.execute("create table attendances (employeeID int, date text);")
+            Sql.c.execute("create table employees (employeeID int, date text);")
+            Sql.c.execute("insert into configs values (1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
+            Sql.conn.commit()
+        except Exception as e:
+            print(str(e))
+
+class DeviceGroup:
+    def __init__(self):
+        self.id = 0
+        self.check()
+
+    def callUpdate(self):
+        if (wsconnected == 1):
+            on_send(json.dumps({
+                "topic":hw,
+                "event":"new_msg",
+                "payload":json.dumps({
+                    "type": "devicegroup",
+                    "hw": hw 
+                }),
+                "ref":""
+            }))
+
+    def update(self, id):
+        print id
+        Sql()
+        Sql.c.execute("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
+        Sql.conn.commit()
+        self.check()
+
+    def check(self):
+        Sql()
+        rows = Sql.c.execute("SELECT devicegroup FROM configs WHERE id == 1;")
+        for row in rows:
+          self.id = row[0]
+        if(self.id == 0):
+            print f
+            if bool(f):
+              f.__del__() 
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'no-devicegroup',
+                'hw': str(hw),
+            }))
 
 def on_open(ws):
+    global wsconnected
+    wsconnected = 1
+    SocketHandler.send_to_all(json.dumps({
+        'message': 'srv-conn',
+    }))
     def run(*args):
         # send the message, then wait
         # so thread doesn't exit and socket
@@ -68,6 +100,8 @@ def on_open(ws):
             "payload":"",
             "ref":""
         }))
+        time.sleep(1)
+        devicegroup.callUpdate()
 
     thread.start_new_thread(run, ())
 
@@ -79,20 +113,42 @@ def on_send(message):
       print('---Exception message: ' + str(e))
 
 def on_message(ws, message):
+    print message
     message = json.loads(message) 
-    response = message["payload"]["response"]
-    print response
-    if(response["type"] == "devicegroup"):
-      global devicegroup
-      devicegroup = response["result"][0]
-      print devicegroup
-      conn = sqlite.connect('att')
-      c = conn.cursor()
-      c.execute("PRAGMA key='"+pragma+"'")
-      c.execute("""update config set devicegroup = """+devicegroup) 
-      conn.commit()
+    if(bool(message["event"])):
+      print("status exist: %s" % str(message["event"]))
+      if(message["event"] == "phx_error"):
+        ws.close() 
+        time.sleep(10)
+        wsClient() 
+
+    print("azzzzzzzzzzzzzzzzzzzzz")
+    print(message)
+
+    if(bool(message["payload"])):
+
+      if(bool(message["payload"]["response"]["type"])):
+        print("payloaddddddD")
+        if(message["payload"]["response"]["type"] == "enroll"):
+            global enrollStatus
+            enrollStatus = True
+            global employeeName
+            employeeName = message["payload"]["response"]["firstname"] + message["payload"]["response"]["lastname"]
+        if(message["payload"]["response"]["type"] == "cancelEnroll"):
+            global enrollStatus
+            enrollStatus = False
+        if(message["payload"]["response"]["type"] == "devicegroup"):
+          print "devicegrrrrrrr"
+          print message["payload"]["response"]["result"]
+          if(message["payload"]["response"]["result"]):
+            devicegroup.update(message["payload"]["response"]["result"][0])
 
 def on_error(ws, error):
+    global wsconnected
+    wsconnected = 0
+    SocketHandler.send_to_all(json.dumps({
+        'message': 'no-srv-conn',
+    }))
     try:
       print(error)
       time.sleep(10)
@@ -103,6 +159,11 @@ def on_error(ws, error):
       wsClient()
 
 def on_close(ws, status):
+    global wsconnected
+    wsconnected = 0 
+    SocketHandler.send_to_all(json.dumps({
+        'message': 'no-srv-conn',
+    }))
     try:
       print("### closed ###")
       time.sleep(10)
@@ -112,7 +173,6 @@ def on_close(ws, status):
       time.sleep(10)
       wsClient()
 
-
 def wsClient():
     try:
       global ws
@@ -121,13 +181,12 @@ def wsClient():
       ws.on_open = on_open
       ws.on_message = on_message
       ws.on_error = on_error
-      ws.run_forever(ping_interval=30, ping_timeout=10)
+      ws.run_forever(ping_interval=10, ping_timeout=5)
     except Exception as e:
       print('---Exception message: ' + str(e))
       time.sleep(10)
       wsClient()
 
-enrollStatus=False
 
 cl = []
 
@@ -160,7 +219,7 @@ class SocketHandler(websocket.WebSocketHandler):
     def open(self):
         if self not in cl:
             cl.append(self)
-        if not isinstance(devicegroup, int):
+        if devicegroup.id == 0:
             SocketHandler.send_to_all(json.dumps({
                 'message': 'no-devicegroup',
                 'hw': str(hw),
@@ -240,19 +299,9 @@ def fingerprint():
     ## Search for a finger
     ##
     ## Tries to initialize the sensor
-    
-    on_send(json.dumps({
-        "topic":hw,
-        "event":"new_msg",
-        "payload":json.dumps({
-            "type": "devicegroup",
-            "hw": hw 
-        }),
-        "ref":""
-    }))
-    print type(devicegroup)
-    if (isinstance(devicegroup, int)):
+    if (devicegroup.id > 0):
         try:
+            global f
             f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 115200, 0xFFFFFFFF, 0x00000000)
         
             if ( f.verifyPassword() == False ):
@@ -271,11 +320,11 @@ def fingerprint():
         time.sleep(10)
         fingerprint()
 
-    
     ## Gets some sensor information
     #f.clearDatabase()
+    print f.getTemplateIndex(2)
     print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
-    #f.getSystemParameters()
+    print f.getSystemParameters()
     #f.loadTemplate(1,1) 
     #wee = f.downloadCharacteristics(1) 
     #print(wee)
@@ -318,19 +367,27 @@ def verify(f):
                 'message': 'identify-ok',
                 'name': str(positionNumber),
             }))
-            on_send(json.dumps({
-                "topic":hw,
-                "event":"new_msg",
-                "payload":json.dumps({
-                    "type": "identify-ok",
-                    "id": str(positionNumber),
-                }),
-                "ref":""
-            }))
+            if(wsconnected == 1):
+                on_send(json.dumps({
+                    "topic":hw,
+                    "event":"new_msg",
+                    "payload":json.dumps({
+                        "type": "identify-ok",
+                        "id": int(positionNumber),
+                    }),
+                    "ref":""
+                }))
+            else:
+              try:
+                Sql()
+                Sql.c.execute("insert into attendances values ("+ str(positionNumber) +",'"+ str(datetime.datetime.now())+"')")
+                Sql.conn.commit()
+              except Exception as e:
+                print("insert: %s" % str(e))
 
             print('Found template at position #' + str(positionNumber))
             print('The accuracy score is: ' + str(accuracyScore))
-    
+ 
         ## OPTIONAL stuff
         ##
     
@@ -363,11 +420,19 @@ def enroll(f):
     try:
         print('Enrollment: Waiting for finger...')
     
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'enroll',
+            'enrollStep': 1,
+            'enrollName': employeeName,
+        }))
         ## Wait that finger is read
         while ( f.readImage()==False or enrollStatus==False ):
             if ( enrollStatus == True ):
                 pass
             else:
+                SocketHandler.send_to_all(json.dumps({
+                    'message': 'clear',
+                }))
                 verify(f)
     
         ## Converts read image to characteristics and stores it in charbuffer 1
@@ -378,36 +443,88 @@ def enroll(f):
         positionNumber = result[0]
     
         if ( positionNumber >= 0 ):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'enroll-exist',
+                'enrollStep': 1,
+                'enrollName': employeeName,
+            }))
             print('Template already exists at position #' + str(positionNumber))
             while ( f.readImage()==True ):
                 pass
+            time.sleep(2)
             enroll(f)
     
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'enroll-ok',
+            'enrollStep': 1,
+            'enrollName': employeeName,
+        }))
         print('Remove finger...')
         while ( f.readImage()==True ):
             pass
     
+##############################
         print('Waiting for same finger again...')
+
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'enroll',
+            'enrollStep': 2,
+            'enrollName': employeeName,
+        }))
     
         ## Wait that finger is read again
         while ( f.readImage()==False or enrollStatus==False ):
             if ( enrollStatus == True ):
                 pass
             else:
+                SocketHandler.send_to_all(json.dumps({
+                    'message': 'clear',
+                }))
                 verify(f)
     
         ## Converts read image to characteristics and stores it in charbuffer 2
         f.convertImage(0x02)
+
+        ## Checks if finger is already enrolled
+        result = f.searchTemplate(0x02)
+        positionNumber = result[0]
     
+        if ( positionNumber >= 0 ):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'enroll-exist',
+                'enrollStep': 2,
+                'enrollName': employeeName,
+            }))
+            print('Template already exists at position #' + str(positionNumber))
+            while ( f.readImage()==True ):
+                pass
+            time.sleep(2)
+            enroll(f)
+
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'enroll-ok',
+            'enrollStep': 2,
+            'enrollName': employeeName,
+        }))
+        print('Remove finger...')
+        while ( f.readImage()==True ):
+            pass
+        time.sleep(1)
         ## Compares the charbuffers and creates a template
         f.createTemplate()
-        tst = f.downloadCharacteristics(0x01)   
-        print(tst)
-        f.uploadCharacteristics(0x01, tst) 
+        #tst = f.downloadCharacteristics(0x01)   
+        #print(tst)
+        #f.uploadCharacteristics(0x01, tst) 
         ## Saves template at new position number
         positionNumber = f.storeTemplate()
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'enroll-successful',
+            'enrollStep': 2,
+            'enrollName': employeeName,
+        }))
         print('Finger enrolled successfully!')
         print('New template position #' + str(positionNumber))
+        time.sleep(1)
         enrollStatus = False
         while ( f.readImage()==False ):
             verify(f) 
@@ -435,11 +552,18 @@ def getTemplateIndex(f):
     except Exception as e:
         print('Exception message: ' + str(e))
 
-
-#def startWsClient():
-#    wsClient().connect()
+def devicegroupUpdate():
+    time.sleep(60)
+    devicegroup.callUpdate()
+    devicegroupUpdate()
 
 if __name__ == '__main__':
+    sql = Sql()
+    sql.create()
+    devicegroup = DeviceGroup()
+    Thread(target = wsClient).start()
+
+    #init DeviceGroup class an check it which is included in __init__ method
     Thread(name='httpServer', target = httpServer).start()
     Thread(name='fingerprint', target = fingerprint).start()
-    Thread(target = wsClient).start()
+    Thread(name='devicegroupUpdate', target = devicegroupUpdate).start()

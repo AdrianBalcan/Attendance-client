@@ -828,7 +828,7 @@ class PyFingerprint(object):
         else:
             raise Exception('Unknown error')
 
-    def searchTemplate(self):
+    def searchTemplate(self, charBufferNumber = 0x01):
         """
         Search the finger characteristiccs in CharBuffer in database.
 
@@ -840,7 +840,7 @@ class PyFingerprint(object):
         """
 
         ## CharBuffer1 and CharBuffer2 are the same in this case
-        charBufferNumber = 0x01
+        ##charBufferNumber = 0x01
 
         ## Begin search at index 0
         positionStart = 0x0000

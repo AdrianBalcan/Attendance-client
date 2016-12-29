@@ -5,6 +5,9 @@
   <link href="/css/font-awesome.min.css" rel="stylesheet" type="text/css"\>
 </head>
 <body>
+  <div class="connectionStatus" id="connectionStatus">
+    <h3><div id="connectionStatusText"></div></h3>
+  </div>
   <div class="notifyTopBar" id="notifyTopBar">
     <h1><div id="notifyTopBarText"></div></h1>
   </div>
@@ -68,6 +71,7 @@ function startWebSocket(){
 	};
 	ws.onclose = function () {
 		console.log("disconnected");
+		$('#connectionStatus').hide();
 		$('#disconnected').show();
                 wsReconnect = setTimeout(startWebSocket(), 5000);
         }
@@ -75,25 +79,53 @@ function startWebSocket(){
                 data = JSON.parse(data.data);
                 console.log(data.message);
                 switch(data.message) {
-                    case 'no-devicegroup':
-                        notify("#202020", "Cod de activare a dispozitivului:</br>"+data.hw)
-                        break;
-                    case 'identify-ok':
+                  case 'enroll':
+		    if(data.enrollStep == 1){
+                       notify("#202020", "Pasul " + data.enrollStep + " din 2: Scaneaza amprenta!", data.enrollName);
+                    } else {
+                       notify("#202020", "Pasul " + data.enrollStep + " din 2: Scaneaza aceeasi amprenta ca in pasul precedent!", data.enrollName);
+		    }
+                    break;
+		  case 'enroll-ok':
+                    notify("green", "Pasul " + data.enrollStep + " din 2: Scanare Corecta!", data.enrollName);
+		    console.log('enroll_identify-ok');
+                    break;
+                  case 'enroll-exist':
+                    notify('red', "Pasul " + data.enrollStep + " din 2: Amprenta exista deja in baza de date! Incearca din nou cu alta amprenta!", data.enrollName);
+                    break;
+                  case 'enroll-err':
+		    console.log('enroll_identify-err: fingerprint found in db');
+                    notify('red', "Pasul " + data.enrollStep + " din 2: Eroare! Incearca din nou!", data.enrollName);
+                    break;
+                  case 'enroll-successful':
+                    notify('green', "Amprenta a fost inregistrata in sistem! Va multumim!", data.enrollName);
+                    break;
+                  case 'srv-conn':
+                      clearConnectionStatus()
+                      break;
+                  case 'no-srv-conn':
+                      connectionStatus("Red", "Conexiune inexistenta cu serverul!</br> Dispozitivul functioneaza normal si se va sincroniza automat la reconectare.")
+                      break;
+                  case 'no-devicegroup':
+                      notify("#202020", "Cod de activare a dispozitivului:</br>"+data.hw)
+                      break;
+                  case 'identify-ok':
 //     		        if(employee.inOut == 0){ 
        			notify("green", "Bine ai venit "+data.name);
 //                      } else {
 //	                    notify("blue", "La revedere, "+employee.name);
 //                      }
                         break;
-                    case 'identify-err':
-		        notify("red", "Amprenta neidentificata! Incearca din nou!");
-                        break;
-                    case 'no-fingerprint':
-		        notify("red", "Eroare! Conexiune inexistenta cu cititorul de amprente!");
-                        break;
-                    case 'clear':
-			clearNotify();
-			break;
+                  case 'identify-err':
+		      notify("red", "Amprenta neidentificata! Incearca din nou!");
+                      break;
+                  case 'no-fingerprint':
+                      clearConnectionStatus()
+		      notify("red", "Eroare! Conexiune inexistenta cu cititorul de amprente!");
+                      break;
+                  case 'clear':
+	   	      clearNotify();
+		      break;
                 }
         }
 }
@@ -221,6 +253,14 @@ function startWebSocket(){
         $('#notifyTopBar').css("background-color", color);
 	$('#notifyTopBarText').html(msg);
 	$('#notifyTopBar').show();
+    }
+    function connectionStatus(color, msg){
+        $('#connectionStatus').css("background-color", color);
+	$('#connectionStatusText').html(msg);
+	$('#connectionStatus').show();
+    }
+    function clearConnectionStatus(){
+	$('#connectionStatus').hide();
     }
 	</script>
 	</body>

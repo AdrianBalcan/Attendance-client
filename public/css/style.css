@@ -147,6 +147,33 @@ tr {
   			}
 			#notifyTopBarText {
   			}
+/*			.connectionStatus {
+    				z-index: 90;		
+				position: fixed;
+    				left: 0px;
+    				bottom: 10px;
+                                height: 20px;
+    				width: 100%; 
+				text-align: center;
+				vertical-align: middle;
+				color: white;
+				font-family: Verdana;
+				font-weight: bold;
+				font-size: xx-large;
+    			}
+*/
+.connectionStatus {
+    display: none;
+    position: fixed;
+    bottom: 21px;
+    left: 0px;    
+    width: 100%;
+    color:white;
+    clear:both;
+    text-align:center;
+    padding:2px;
+    z-index:50; 	 
+}
 			.notifyTopBar {
 				display: none;
     				z-index: 20;		
