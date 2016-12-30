@@ -122,13 +122,9 @@ def on_message(ws, message):
         time.sleep(10)
         wsClient() 
 
-    print("azzzzzzzzzzzzzzzzzzzzz")
-    print(message)
-
     if(bool(message["payload"])):
 
       if(bool(message["payload"]["response"]["type"])):
-        print("payloaddddddD")
         if(message["payload"]["response"]["type"] == "enroll"):
             global enrollStatus
             enrollStatus = True
@@ -138,8 +134,6 @@ def on_message(ws, message):
             global enrollStatus
             enrollStatus = False
         if(message["payload"]["response"]["type"] == "devicegroup"):
-          print "devicegrrrrrrr"
-          print message["payload"]["response"]["result"]
           if(message["payload"]["response"]["result"]):
             devicegroup.update(message["payload"]["response"]["result"][0])
 
@@ -186,7 +180,6 @@ def wsClient():
       print('---Exception message: ' + str(e))
       time.sleep(10)
       wsClient()
-
 
 cl = []
 
@@ -302,7 +295,7 @@ def fingerprint():
     if (devicegroup.id > 0):
         try:
             global f
-            f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 115200, 0xFFFFFFFF, 0x00000000)
+            f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 57600, 0xFFFFFFFF, 0x00000000)
         
             if ( f.verifyPassword() == False ):
                 raise ValueError('The given fingerprint sensor password is wrong!')
@@ -512,11 +505,22 @@ def enroll(f):
         time.sleep(1)
         ## Compares the charbuffers and creates a template
         f.createTemplate()
-        #tst = f.downloadCharacteristics(0x01)   
+        tst = f.downloadCharacteristics(0x01)   
         #print(tst)
         #f.uploadCharacteristics(0x01, tst) 
         ## Saves template at new position number
         positionNumber = f.storeTemplate()
+        if(wsconnected == 1):
+            on_send(json.dumps({
+                "topic":hw,
+                "event":"new_msg",
+                "payload":json.dumps({
+                    "type": "enroll-ok",
+                    "id": int(positionNumber),
+                    "template": tst,
+                }),
+                "ref":""
+            }))
         SocketHandler.send_to_all(json.dumps({
             'message': 'enroll-successful',
             'enrollStep': 2,
