@@ -41,7 +41,7 @@
 </div>
 
 <div id="footer">
-Suport Tehnic: 0747 390 252 sau 0737 515 073
+Dispozitiv ID: <div style="display: inline-block" id="deviceID"></div> Grup: <div style="display: inline-block" id="devicegroup"></div> Suport Tehnic: 0747 390 252 sau 0737 515 073
 </div>
 
 <script>
@@ -79,6 +79,10 @@ function startWebSocket(){
                 data = JSON.parse(data.data);
                 console.log(data.message);
                 switch(data.message) {
+                  case 'devicegroup':
+                    $("#deviceID").html(data.hw)
+                    $("#devicegroup").html(data.devicegroup)
+                    break;
                   case 'enroll':
 		    if(data.enrollStep == 1){
                        notify("#202020", "Pasul " + data.enrollStep + " din 2: Scaneaza amprenta!", data.enrollName);

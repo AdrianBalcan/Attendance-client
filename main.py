@@ -25,7 +25,7 @@ import datetime
 
 f = None
 wsconnected = 0 
-hw = "sp:"+base64.b64encode(str(uuid.getnode()))+"0"
+hw = base64.b64encode(str(uuid.getnode()))
 host = "ws://localhost:4000/socket/websocket/"
 pragma = "0jFr90a"
 enrollStatus = False
@@ -54,7 +54,7 @@ class DeviceGroup:
     def callUpdate(self):
         if (wsconnected == 1):
             on_send(json.dumps({
-                "topic":hw,
+                "topic": "sp:"+hw,
                 "event":"new_msg",
                 "payload":json.dumps({
                     "type": "devicegroup",
@@ -95,7 +95,7 @@ def on_open(ws):
         # so thread doesn't exit and socket
         # isn't closed
         ws.send(json.dumps({
-            "topic":hw,
+            "topic": "sp:"+hw,
             "event":"phx_join",
             "payload":"",
             "ref":""
@@ -129,7 +129,7 @@ def on_message(ws, message):
             global enrollStatus
             enrollStatus = True
             global employeeName
-            employeeName = message["payload"]["response"]["firstname"] + message["payload"]["response"]["lastname"]
+            employeeName = message["payload"]["response"]["firstname"] + " " + message["payload"]["response"]["lastname"]
         if(message["payload"]["response"]["type"] == "cancelEnroll"):
             global enrollStatus
             enrollStatus = False
@@ -217,6 +217,12 @@ class SocketHandler(websocket.WebSocketHandler):
                 'message': 'no-devicegroup',
                 'hw': str(hw),
             }))
+        else:
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'devicegroup',
+                'devicegroup': devicegroup.id,
+                'hw': str(hw),
+            }))
 
     def on_close(self):
         if self in cl:
@@ -244,8 +250,8 @@ app = web.Application([
     (r'/delete/(.*)', DeleteHandler),
     (r'/ws', SocketHandler),
     (r'/api', ApiHandler),
-    (r'/js/(.*)', web.StaticFileHandler, {'path': './public/js/'}),
-    (r'/css/(.*)', web.StaticFileHandler, {'path': './public/css/'}),
+    (r'/js/(.*)', web.StaticFileHandler, {'path': 'public/js/'}),
+    (r'/css/(.*)', web.StaticFileHandler, {'path': 'public/css/'}),
 ])
 
 #class S(BaseHTTPRequestHandler):
@@ -362,7 +368,7 @@ def verify(f):
             }))
             if(wsconnected == 1):
                 on_send(json.dumps({
-                    "topic":hw,
+                    "topic": "sp:"+hw,
                     "event":"new_msg",
                     "payload":json.dumps({
                         "type": "identify-ok",
@@ -455,6 +461,7 @@ def enroll(f):
         print('Remove finger...')
         while ( f.readImage()==True ):
             pass
+        time.sleep(2)
     
 ##############################
         print('Waiting for same finger again...')
@@ -512,7 +519,7 @@ def enroll(f):
         positionNumber = f.storeTemplate()
         if(wsconnected == 1):
             on_send(json.dumps({
-                "topic":hw,
+                "topic": "sp:"+hw,
                 "event":"new_msg",
                 "payload":json.dumps({
                     "type": "enroll-ok",
