@@ -76,11 +76,16 @@ class DeviceGroup:
         for row in rows:
           self.id = row[0]
         if(self.id == 0):
-            print f
             if bool(f):
               f.__del__() 
             SocketHandler.send_to_all(json.dumps({
                 'message': 'no-devicegroup',
+                'hw': str(hw),
+            }))
+        else:
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'devicegroup',
+                'devicegroup': self.id,
                 'hw': str(hw),
             }))
 
@@ -307,9 +312,10 @@ def fingerprint():
                 raise ValueError('The given fingerprint sensor password is wrong!')
         
         except Exception as e:
-            SocketHandler.send_to_all(json.dumps({
-                'message': 'no-fingerprint',
-            }))
+            if(devicegroup.id > 0):
+                SocketHandler.send_to_all(json.dumps({
+                    'message': 'no-fingerprint',
+                }))
             print('The fingerprint sensor could not be initialized!')
             print('Exception message: ' + str(e))
             time.sleep(20)
@@ -405,9 +411,10 @@ def verify(f):
         verify(f)
     
     except Exception as e:
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'no-fingerprint',
-        }))
+        if(devicegroup.id > 0):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'no-fingerprint',
+            }))
         print('Operation failed!')
         print('Exception message: ' + str(e))
         sys.exc_clear()
@@ -541,9 +548,10 @@ def enroll(f):
             verify(f) 
     
     except Exception as e:
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'no-fingerprint',
-        }))
+        if(devicegroup.id > 0):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'no-fingerprint',
+            }))
         print('Operation failed!')
         print('Exception message: ' + str(e))
         fingerprint()

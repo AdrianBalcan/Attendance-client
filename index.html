@@ -111,6 +111,7 @@ function startWebSocket(){
                       connectionStatus("Red", "Conexiune inexistenta cu serverul!</br> Dispozitivul functioneaza normal si se va sincroniza automat la reconectare.")
                       break;
                   case 'no-devicegroup':
+                      $("#deviceID").html(data.hw)
                       notify("#202020", "Cod de activare a dispozitivului:</br>"+data.hw)
                       break;
                   case 'identify-ok':
