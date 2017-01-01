@@ -120,27 +120,27 @@ def on_send(message):
 def on_message(ws, message):
     print message
     message = json.loads(message) 
-    if(bool(message["event"])):
+    if "event" in message: 
       print("status exist: %s" % str(message["event"]))
       if(message["event"] == "phx_error"):
         ws.close() 
         time.sleep(10)
         wsClient() 
 
-    if(bool(message["payload"])):
-
-      if(bool(message["payload"]["response"]["type"])):
-        if(message["payload"]["response"]["type"] == "enroll"):
-            global enrollStatus
-            enrollStatus = True
-            global employeeName
-            employeeName = message["payload"]["response"]["firstname"] + " " + message["payload"]["response"]["lastname"]
-        if(message["payload"]["response"]["type"] == "cancelEnroll"):
-            global enrollStatus
-            enrollStatus = False
-        if(message["payload"]["response"]["type"] == "devicegroup"):
-          if(message["payload"]["response"]["result"]):
-            devicegroup.update(message["payload"]["response"]["result"][0])
+    if "payload" in message:
+      if "response" in message["payload"]:
+        if "type" in message["payload"]["response"]:
+          if(message["payload"]["response"]["type"] == "enroll"):
+              global enrollStatus
+              enrollStatus = True
+              global employeeName
+              employeeName = message["payload"]["response"]["firstname"] + " " + message["payload"]["response"]["lastname"]
+          if(message["payload"]["response"]["type"] == "cancelEnroll"):
+              global enrollStatus
+              enrollStatus = False
+          if(message["payload"]["response"]["type"] == "devicegroup"):
+            if(message["payload"]["response"]["result"]):
+              devicegroup.update(message["payload"]["response"]["result"][0])
 
 def on_error(ws, error):
     global wsconnected
