@@ -99,7 +99,7 @@ def on_open(ws):
         # send the message, then wait
         # so thread doesn't exit and socket
         # isn't closed
-        ws.send(json.dumps({
+        on_send(json.dumps({
             "topic": "sp:"+hw,
             "event":"phx_join",
             "payload":"",
@@ -135,9 +135,14 @@ def on_message(ws, message):
               enrollStatus = True
               global employeeName
               employeeName = message["payload"]["response"]["firstname"] + " " + message["payload"]["response"]["lastname"]
+              global employeeID
+              employeeID = message["payload"]["response"]["employeeID"]
           if(message["payload"]["response"]["type"] == "cancelEnroll"):
               global enrollStatus
               enrollStatus = False
+          if(message["payload"]["response"]["type"] == "devicegroup-create"):
+            if(message["payload"]["response"]["result"]):
+              devicegroup.update(int(message["payload"]["response"]["result"]))
           if(message["payload"]["response"]["type"] == "devicegroup"):
             if(message["payload"]["response"]["result"]):
               devicegroup.update(message["payload"]["response"]["result"][0])
@@ -326,8 +331,8 @@ def fingerprint():
         fingerprint()
 
     ## Gets some sensor information
-    #f.clearDatabase()
-    print f.getTemplateIndex(2)
+    f.clearDatabase()
+    #print f.getTemplateIndex(2)
     print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
     print f.getSystemParameters()
     #f.loadTemplate(1,1) 
@@ -519,33 +524,43 @@ def enroll(f):
         time.sleep(1)
         ## Compares the charbuffers and creates a template
         f.createTemplate()
-        tst = f.downloadCharacteristics(0x01)   
+        template = str(f.downloadCharacteristics(0x01))[1:-1]
         #print(tst)
         #f.uploadCharacteristics(0x01, tst) 
         ## Saves template at new position number
         positionNumber = f.storeTemplate()
         if(wsconnected == 1):
+          try:
             on_send(json.dumps({
                 "topic": "sp:"+hw,
                 "event":"new_msg",
                 "payload":json.dumps({
                     "type": "enroll-ok",
-                    "id": int(positionNumber),
-                    "template": tst,
+                    "f_id": int(positionNumber),
+                    "employeeID": employeeID,
+                    "template": template,
                 }),
                 "ref":""
             }))
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'enroll-successful',
-            'enrollStep': 2,
-            'enrollName': employeeName,
-        }))
-        print('Finger enrolled successfully!')
-        print('New template position #' + str(positionNumber))
-        time.sleep(1)
-        enrollStatus = False
-        while ( f.readImage()==False ):
-            verify(f) 
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'enroll-successful',
+                'enrollStep': 2,
+                'enrollName': employeeName,
+            }))
+            print('Finger enrolled successfully!')
+            print('New template position #' + str(positionNumber))
+            time.sleep(1)
+            enrollStatus = False
+            while ( f.readImage()==False ):
+              verify(f) 
+          except Exception as e:
+            #TODO:
+            print e
+            print "there is no connection with the server errroooorrr, try again later"
+            time.sleep(1)
+            enrollStatus = False
+            while ( f.readImage()==False ):
+              verify(f) 
     
     except Exception as e:
         if(devicegroup.id > 0):
