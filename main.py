@@ -25,7 +25,7 @@ import datetime
 
 f = None
 wsconnected = 0 
-hw = base64.b64encode(str(uuid.getnode()))
+hw = str(uuid.getnode())
 host = "ws://localhost:4000/socket/websocket/"
 pragma = "0jFr90a"
 enrollStatus = False
