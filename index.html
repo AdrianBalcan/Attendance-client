@@ -45,18 +45,6 @@ Dispozitiv ID: <div style="display: inline-block" id="deviceID"></div> Grup: <di
 </div>
 
 <script>
-        function doneTable(rawData) {
-            var data = { target:rawData };
-            var template = _.template( $("#tpl-done").text() );
-            $("#done_table").html( template(data) );
-	}
-        function idDetailsTable(rawData) {
-            console.log(rawData);
-            var data = { target:rawData };
-            var template = _.template( $("#tpl-id_details_table").text() );
-            $("#id_details_table1").html( template(data) );
-            $("#id_details_table2").html( template(data) );
-        }
 var ok;
 var err_cid;
 var scanned;
@@ -77,7 +65,7 @@ function startWebSocket(){
         }
         ws.onmessage = function (data) {
                 data = JSON.parse(data.data);
-                console.log(data.message);
+                console.log(data);
                 switch(data.message) {
                   case 'devicegroup':
                     $("#deviceID").html(data.hw)
@@ -103,6 +91,9 @@ function startWebSocket(){
                     break;
                   case 'enroll-successful':
                     notify('green', "Amprenta a fost inregistrata in sistem! Va multumim!", data.enrollName);
+                    break;
+                  case 'enroll-fail':
+                    notify('orange', "Adaugarea de amprente nu este posibila cand conexiunea cu serverul este inexistenta. Va rugam incercati mai tarziu!");
                     break;
                   case 'srv-conn':
                       clearConnectionStatus()
