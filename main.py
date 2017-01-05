@@ -1,28 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-import hashlib
-from pyfingerprint.pyfingerprint import PyFingerprint
-from tornado import websocket, web, ioloop
+""" This code """
 from threading import Thread
 try:
     import thread
 except ImportError:
     import _thread as thread
-import threading
 import json
 import logging
 import time
-import re
 import sys
-import base64
 import uuid
+import datetime
 import websocket as websocketClient
 from pysqlcipher import dbapi2 as sqlite
-import datetime
+from tornado import websocket, web, ioloop
+from pyfingerprint.pyfingerprint import PyFingerprint
 
 f = None
-wsconnected = 0 
+wsconnected = 0
 hw = str(uuid.getnode())
 host = "ws://localhost:4000/socket/websocket/"
 pragma = "0jFr90a"
@@ -43,7 +39,7 @@ class Sql():
             Sql.c.execute("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
             Sql.conn.commit()
         except Exception as e:
-            print(str(e))
+            print str(e)
 
 class DeviceGroup:
     def __init__(self):
@@ -51,7 +47,7 @@ class DeviceGroup:
         self.check()
 
     def callUpdate(self):
-        if(wsconnected == 1):
+        if wsconnected == 1:
             on_send(json.dumps({
                 "topic": "sp:"+hw,
                 "event":"new_msg",
@@ -61,6 +57,11 @@ class DeviceGroup:
                 }),
                 "ref":""
             }))
+
+    def setSecurity(setSecurityID):
+        if f is not None:
+            f.setSystemParameter(5, setSecurityID)
+
 
     def update(self, id):
         print id
@@ -303,7 +304,14 @@ def fingerprint():
 
     ## Gets some sensor information
     #f.clearDatabase()
-    #print f.getTemplateIndex(2)
+     
+    #print f.setSystemParameter(5, 1)
+    rows = Sql.c.execute("SELECT * FROM fingerprints;")
+    for row in rows:
+        print row[0]
+        f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
+        f.storeTemplate(row[0], 0x01)
+    #print f.getTemplateIndex()
     print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
     print f.getSystemParameters()
     #f.loadTemplate(1,1) 
@@ -586,8 +594,8 @@ def getTemplateIndex(f):
         print('Exception message: ' + str(e))
 
 def devicegroupUpdate():
-    time.sleep(60)
     devicegroup.callUpdate()
+    time.sleep(60)
     devicegroupUpdate()
 
 if __name__ == '__main__':
