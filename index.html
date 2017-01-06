@@ -67,6 +67,9 @@ function startWebSocket(){
                 data = JSON.parse(data.data);
                 console.log(data);
                 switch(data.message) {
+                  case 'synchronize':
+                    notify("blue", "Dispozitivul se sincronizeaza!</br>Va rugam asteptati!")
+                    break;
                   case 'devicegroup':
                     $("#deviceID").html(data.hw)
                     $("#devicegroup").html(data.devicegroup)
@@ -107,7 +110,7 @@ function startWebSocket(){
                       break;
                   case 'identify-ok':
 //     		        if(employee.inOut == 0){ 
-       			notify("green", "Bine ai venit "+data.name);
+       			notify("green", data.name+", activitatea dvs. a fost inregistrata!</br>Va multumim!");
 //                      } else {
 //	                    notify("blue", "La revedere, "+employee.name);
 //                      }

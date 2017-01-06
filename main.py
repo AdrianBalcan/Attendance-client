@@ -6,10 +6,10 @@ try:
     import thread
 except ImportError:
     import _thread as thread
+import sys
 import json
 import logging
 import time
-import sys
 import uuid
 import datetime
 import websocket as websocketClient
@@ -17,29 +17,41 @@ from pysqlcipher import dbapi2 as sqlite
 from tornado import websocket, web, ioloop
 from pyfingerprint.pyfingerprint import PyFingerprint
 
+DEBUG = True 
+#sys.settrace
 f = None
+Verify = True
 wsconnected = 0
 hw = str(uuid.getnode())
 host = "ws://localhost:4000/socket/websocket/"
 pragma = "0jFr90a"
 enrollStatus = False
 
-class Sql():
-    conn = sqlite.connect('att', check_same_thread=False)
-    c = conn.cursor()
-    c.execute("PRAGMA key='"+pragma+"'")
+class Dbm():
+    def __init__(self):
+        self.conn = sqlite.connect('att', check_same_thread=False)
+        self.conn.execute("PRAGMA key='"+pragma+"'")
+        self.conn.commit()
+        self.cur = self.conn.cursor()
 
-    def create(self):
-        try:
-            Sql()
-            Sql.c.execute("create table configs(id, fingerprints_limit int, devicegroup int, date text)")
-            Sql.c.execute("create table attendances(employeeID int, date text);")
-            Sql.c.execute("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text);")
-            Sql.c.execute("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
-            Sql.c.execute("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
-            Sql.conn.commit()
-        except Exception as e:
-            print str(e)
+    def query(self, arg):
+        self.cur.execute(arg)
+        self.conn.commit()
+        return self.cur
+
+    def __del__(self):
+        self.conn.close()
+
+def createDB():
+    try:
+        dbm = Dbm()
+        dbm.query("create table configs(id, fingerprints_limit int, devicegroup int, date text)")
+        dbm.query("create table attendances(employeeID int, date text);")
+        dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text);")
+        dbm.query("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
+        dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
+    except Exception as e:
+        print str(e)
 
 class DeviceGroup:
     def __init__(self):
@@ -62,22 +74,24 @@ class DeviceGroup:
         if f is not None:
             f.setSystemParameter(5, setSecurityID)
 
-
     def update(self, id):
-        print id
-        Sql()
-        Sql.c.execute("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
-        Sql.conn.commit()
-        self.check()
+        dbm = Dbm()
+        dbm.query("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
+      #  sql = Sql()
+      #  sql.c.execute("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
+      #  sql.conn.commit()
+      #  self.check()
 
     def check(self):
-        Sql()
-        rows = Sql.c.execute("SELECT devicegroup FROM configs WHERE id == 1;")
+        dbm = Dbm()
+        rows = dbm.query("SELECT devicegroup FROM configs WHERE id == 1;")
+       # sql = Sql()
+       # rows = sql.c.execute("SELECT devicegroup FROM configs WHERE id == 1;")
         for row in rows:
           self.id = row[0]
         if(self.id == 0):
             if bool(f):
-              f.__del__() 
+              stopVerify() 
             SocketHandler.send_to_all(json.dumps({
                 'message': 'no-devicegroup',
                 'hw': str(hw),
@@ -113,15 +127,16 @@ def on_open(ws):
 def on_send(message):
     try:
       ws.send(message)
-      print("sent: "+message)
+      if DEBUG:
+          print("sent: "+message)
     except Exception as e:
       print('---Exception message: ' + str(e))
 
 def on_message(ws, message):
-    print message
+    if DEBUG:
+        print message
     message = json.loads(message) 
     if "event" in message: 
-      print("status exist: %s" % str(message["event"]))
       if(message["event"] == "phx_error"):
         ws.close() 
         time.sleep(10)
@@ -130,6 +145,10 @@ def on_message(ws, message):
     if "payload" in message:
       if "response" in message["payload"]:
         if "type" in message["payload"]["response"]:
+          if(message["payload"]["response"]["type"] == "deleteFingerprint"):
+              deleteFingerprint(message["payload"]["response"]["id"])
+          if(message["payload"]["response"]["type"] == "synchronize"):
+              synchronize()
           if(message["payload"]["response"]["type"] == "enroll"):
               global enrollStatus
               enrollStatus = True
@@ -161,7 +180,6 @@ def on_error(ws, error):
         'message': 'no-srv-conn',
     }))
     try:
-      print(error)
       time.sleep(10)
       wsClient()
     except Exception as e:
@@ -176,7 +194,6 @@ def on_close(ws, status):
         'message': 'no-srv-conn',
     }))
     try:
-      print("### closed ###")
       time.sleep(10)
       wsClient()
     except Exception as e:
@@ -206,9 +223,9 @@ class IndexHandler(web.RequestHandler):
 
 class EnrollHandler(web.RequestHandler):
     def get(self):
-        global enrollStatus
-        enrollStatus=True
-        self.wfile.write("<html><body><h1>hi!</h1></body></html>")
+        self.write("<html><body><h1>hi!</h1></body></html>")
+        synchronize()
+        #pass
 
 class DeleteHandler(web.RequestHandler):
     def get(self):
@@ -275,7 +292,6 @@ def httpServer():
     app.listen(8888)
     ioloop.IOLoop.instance().start()
 
-
 def fingerprint():
     ## Search for a finger
     ##
@@ -293,8 +309,9 @@ def fingerprint():
                 SocketHandler.send_to_all(json.dumps({
                     'message': 'no-fingerprint',
                 }))
-            print('The fingerprint sensor could not be initialized!')
-            print('Exception message: ' + str(e))
+            if DEBUG:
+                print('The fingerprint sensor could not be initialized!')
+                print('Exception message: ' + str(e))
             time.sleep(20)
             sys.exc_clear()
             fingerprint()
@@ -304,13 +321,9 @@ def fingerprint():
 
     ## Gets some sensor information
     #f.clearDatabase()
+    synchronize()
      
     #print f.setSystemParameter(5, 1)
-    rows = Sql.c.execute("SELECT * FROM fingerprints;")
-    for row in rows:
-        print row[0]
-        f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
-        f.storeTemplate(row[0], 0x01)
     #print f.getTemplateIndex()
     print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
     print f.getSystemParameters()
@@ -319,22 +332,67 @@ def fingerprint():
     #print(wee)
     verify(f)
 
+def changeSecurity(value):
+    stopVerify()
+    time.sleep(1)
+    f.deleteTemplate(ID)
+    startVerify()
+
+def deleteFingerprint(ID):
+    stopVerify()
+    dbm = Dbm()
+    dbm.query("DELETE FROM fingerprints where f_id == "+ ID)
+    time.sleep(1)
+    f.deleteTemplate(ID)
+    startVerify()
+
+def synchronize():
+    stopVerify()
+    SocketHandler.send_to_all(json.dumps({
+        'message': 'synchronize',
+    }))
+    time.sleep(1)
+    f.clearDatabase()
+    #rows = Sql.c.execute("SELECT * FROM fingerprints;")
+    dbm = Dbm()
+    rows = dbm.query("SELECT * FROM fingerprints;")
+    for row in rows:
+        if DEBUG:
+            print row[0]
+        f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
+        f.storeTemplate(row[0], 0x01)
+    time.sleep(1)
+    startVerify()
+
+def stopVerify():
+    global Verify
+    Verify = False
+
+def startVerify():
+    global Verify
+    Verify = True
+    SocketHandler.send_to_all(json.dumps({
+        'message': 'clear',
+    }))
+    #verify(f)
+
 def verify(f):
     ## Tries to search the finger and calculate hash
 
     try:
+        global Verify
         global enrollStatus
-
-        print('Waiting for finger...%s' % enrollStatus)
+        if DEBUG:
+            print('Waiting for finger...%s' % enrollStatus)
         SocketHandler.send_to_all(json.dumps({
             'message': 'clear',
         }))
 
         ## Wait that finger is read
-        while( f.readImage()==False or enrollStatus==True):
-            if( enrollStatus == False):
-                pass
-            else:
+        while( f.readImage()==False or enrollStatus==True or Verify == False):
+            while(Verify == False):
+                time.sleep(.1)
+            if( enrollStatus == True):
                 enroll(f)
     
         ## Converts read image to characteristics and stores it in charbuffer 1
@@ -346,14 +404,19 @@ def verify(f):
         positionNumber = result[0]
         accuracyScore = result[1]
     
-        if( positionNumber == -1):
-            print("No match found!")
+        if(positionNumber == -1):
+            if DEBUG:
+              print("No match found!")
             SocketHandler.send_to_all(json.dumps({
                 'message': 'identify-err',
             }))
         else:
-            Sql()
-            rows = Sql.c.execute("SELECT firstname, lastname FROM employees JOIN fingerprints ON employees.employeeID = fingerprints.employeeID WHERE fingerprints.f_id == "+ str(positionNumber) +";")
+            dbm = Dbm()
+            rows = dbm.query("SELECT firstname, lastname \
+                FROM employees JOIN fingerprints \
+                ON employees.employeeID = fingerprints.employeeID \
+                WHERE fingerprints.f_id == "+ str(positionNumber) +";")
+
             for row in rows:
               SocketHandler.send_to_all(json.dumps({
                 'message': 'identify-ok',
@@ -371,9 +434,10 @@ def verify(f):
                 }))
             else:
               try:
-                Sql()
-                Sql.c.execute("insert into attendances values("+ str(positionNumber) +",'"+ str(datetime.datetime.now())+"')")
-                Sql.conn.commit()
+                dbm = Dbm()
+                dbm.query("INSERT into attendances values("+
+                    str(positionNumber) +",'"+
+                    str(datetime.datetime.now())+"')")
               except Exception as e:
                 print("insert: %s" % str(e))
 
@@ -392,7 +456,7 @@ def verify(f):
         ## Hashes characteristics of template
         #print('SHA-2 hash of template: ' + hashlib.sha256(characterics).hexdigest())
 
-        while( f.readImage()==True):
+        while(f.readImage()==True or Verify == False):
             pass
         
         verify(f)
@@ -544,11 +608,9 @@ def enroll(f):
           }))
 
           try:
-            Sql()
-            Sql.c.execute("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
-            Sql.conn.commit()
-            Sql.c.execute("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
-            Sql.conn.commit()
+            dbm = Dbm()
+            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
+            dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
           except Exception as e:
             print("insert: %s" % str(e))
           print("Finger enrolled successfully!")
@@ -595,12 +657,11 @@ def getTemplateIndex(f):
 
 def devicegroupUpdate():
     devicegroup.callUpdate()
-    time.sleep(60)
+    time.sleep(100)
     devicegroupUpdate()
 
 if __name__ == '__main__':
-    sql = Sql()
-    sql.create()
+    createDB()
     devicegroup = DeviceGroup()
     Thread(target = wsClient).start()
 
