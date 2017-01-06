@@ -17,7 +17,7 @@ from pysqlcipher import dbapi2 as sqlite
 from tornado import websocket, web, ioloop
 from pyfingerprint.pyfingerprint import PyFingerprint
 
-DEBUG = True 
+DEBUG = False 
 #sys.settrace
 f = None
 Verify = True
@@ -135,43 +135,46 @@ def on_send(message):
 def on_message(ws, message):
     if DEBUG:
         print message
-    message = json.loads(message) 
-    if "event" in message: 
-      if(message["event"] == "phx_error"):
-        ws.close() 
-        time.sleep(10)
-        wsClient() 
+    try:
+        message = json.loads(message) 
+        if "event" in message: 
+          if(message["event"] == "phx_error"):
+            ws.close() 
+            time.sleep(10)
+            wsClient() 
 
-    if "payload" in message:
-      if "response" in message["payload"]:
-        if "type" in message["payload"]["response"]:
-          if(message["payload"]["response"]["type"] == "deleteFingerprint"):
-              deleteFingerprint(message["payload"]["response"]["id"])
-          if(message["payload"]["response"]["type"] == "synchronize"):
-              synchronize()
-          if(message["payload"]["response"]["type"] == "enroll"):
-              global enrollStatus
-              enrollStatus = True
-              global employeeFirstname
-              employeeFirstname = message["payload"]["response"]["firstname"]
-              global employeeLastname
-              employeeLastname = message["payload"]["response"]["lastname"]
-              global employeeName
-              employeeName = employeeFirstname + " " + employeeLastname
-              global employeeID
-              employeeID = message["payload"]["response"]["employeeID"]
-          if(message["payload"]["response"]["type"] == "cancelEnrollment"):
-              global enrollStatus
-              enrollStatus = False
-              SocketHandler.send_to_all(json.dumps({
-                  'message': 'clear',
-              }))
-          if(message["payload"]["response"]["type"] == "devicegroup-create"):
-            if(message["payload"]["response"]["result"]):
-              devicegroup.update(int(message["payload"]["response"]["result"]))
-          if(message["payload"]["response"]["type"] == "devicegroup"):
-            if(message["payload"]["response"]["result"]):
-              devicegroup.update(message["payload"]["response"]["result"][0])
+        if "payload" in message:
+          if "response" in message["payload"]:
+            if "type" in message["payload"]["response"]:
+              if(message["payload"]["response"]["type"] == "deleteFingerprint"):
+                  deleteFingerprint(message["payload"]["response"]["id"])
+              if(message["payload"]["response"]["type"] == "synchronize"):
+                  synchronize()
+              if(message["payload"]["response"]["type"] == "enroll"):
+                  global enrollStatus
+                  enrollStatus = True
+                  global employeeFirstname
+                  employeeFirstname = message["payload"]["response"]["firstname"]
+                  global employeeLastname
+                  employeeLastname = message["payload"]["response"]["lastname"]
+                  global employeeName
+                  employeeName = employeeFirstname + " " + employeeLastname
+                  global employeeID
+                  employeeID = message["payload"]["response"]["employeeID"]
+              if(message["payload"]["response"]["type"] == "cancelEnrollment"):
+                  global enrollStatus
+                  enrollStatus = False
+                  SocketHandler.send_to_all(json.dumps({
+                      'message': 'clear',
+                  }))
+              if(message["payload"]["response"]["type"] == "devicegroup-create"):
+                if(message["payload"]["response"]["result"]):
+                  devicegroup.update(int(message["payload"]["response"]["result"]))
+              if(message["payload"]["response"]["type"] == "devicegroup"):
+                if(message["payload"]["response"]["result"]):
+                  devicegroup.update(message["payload"]["response"]["result"][0])
+    except:
+        pass
 
 def on_error(ws, error):
     global wsconnected
@@ -227,12 +230,6 @@ class EnrollHandler(web.RequestHandler):
         synchronize()
         #pass
 
-class DeleteHandler(web.RequestHandler):
-    def get(self):
-        id = self.path.split("/")[2]
-        delete(f, id)
-        self.wfile.write("<html><body><h1>hi!</h1></body></html>")
-
 class SocketHandler(websocket.WebSocketHandler):
    
     @staticmethod
@@ -281,7 +278,6 @@ class ApiHandler(web.RequestHandler):
 app = web.Application([
     (r'/', IndexHandler),
     (r'/enroll', EnrollHandler),
-    (r'/delete/(.*)', DeleteHandler),
     (r'/ws', SocketHandler),
     (r'/api', ApiHandler),
     (r'/js/(.*)', web.StaticFileHandler, {'path': 'public/js/'}),
@@ -325,8 +321,9 @@ def fingerprint():
      
     #print f.setSystemParameter(5, 1)
     #print f.getTemplateIndex()
-    print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
-    print f.getSystemParameters()
+    if DEBUG:
+        print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
+        print f.getSystemParameters()
     #f.loadTemplate(1,1) 
     #wee = f.downloadCharacteristics(1) 
     #print(wee)
@@ -335,15 +332,18 @@ def fingerprint():
 def changeSecurity(value):
     stopVerify()
     time.sleep(1)
-    f.deleteTemplate(ID)
     startVerify()
 
 def deleteFingerprint(ID):
     stopVerify()
-    dbm = Dbm()
-    dbm.query("DELETE FROM fingerprints where f_id == "+ ID)
-    time.sleep(1)
-    f.deleteTemplate(ID)
+    try:
+        dbm = Dbm()
+        dbm.query("DELETE FROM fingerprints where f_id == %s" % ID)
+        time.sleep(1)
+        f.deleteTemplate(ID)
+    except Exception as e:
+        print "Opss!" + str(e)
+        pass
     startVerify()
 
 def synchronize():
@@ -440,9 +440,9 @@ def verify(f):
                     str(datetime.datetime.now())+"')")
               except Exception as e:
                 print("insert: %s" % str(e))
-
-            print("Found template at position #" + str(positionNumber))
-            print("The accuracy score is: " + str(accuracyScore))
+	    if DEBUG:
+                print("Found template at position #" + str(positionNumber))
+                print("The accuracy score is: " + str(accuracyScore))
  
         ## OPTIONAL stuff
         ##
@@ -475,7 +475,8 @@ def enroll(f):
     global enrollStatus
     ## Tries to enroll new finger
     try:
-        print("Enrollment: Waiting for finger...")
+        if DEBUG: 
+            print("Enrollment: Waiting for finger...")
     
         SocketHandler.send_to_all(json.dumps({
             'message': 'enroll',
@@ -516,13 +517,15 @@ def enroll(f):
             'enrollStep': 1,
             'enrollName': employeeName,
         }))
-        print("Remove finger...")
+        if DEBUG:
+          print("Remove finger...")
         while(f.readImage()==True):
             pass
         time.sleep(2)
     
 ##############################
-        print("Waiting for same finger again...")
+        if DEBUG:
+            print("Waiting for same finger again...")
 
         SocketHandler.send_to_all(json.dumps({
             'message': 'enroll',
@@ -575,7 +578,6 @@ def enroll(f):
         #f.uploadCharacteristics(0x01, tst) 
         ## Saves template at new position number
         positionNumber = f.storeTemplate()
-        print str(positionNumber)
         if(wsconnected == 1):
           try:
             on_send(json.dumps({
@@ -613,8 +615,9 @@ def enroll(f):
             dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
           except Exception as e:
             print("insert: %s" % str(e))
-          print("Finger enrolled successfully!")
-          print("New template position #" + str(positionNumber))
+          if DEBUG:
+              print("Finger enrolled successfully!")
+              print("New template position #" + str(positionNumber))
           time.sleep(1)
           enrollStatus = False
           while(f.readImage()==False):
@@ -639,14 +642,6 @@ def enroll(f):
         print("Operation failed!")
         print("Exception message: " + str(e))
         fingerprint()
-
-def delete(f, id):
-    try:
-        positionNumber = int(id)
-        if(f.deleteTemplate(positionNumber) == True):
-            print('Template deleted! %d' % positionNumber)
-    except Exception as e:
-        print('Template delete error.Exception message: ' + str(e))
 
 def getTemplateIndex(f):
     try:
