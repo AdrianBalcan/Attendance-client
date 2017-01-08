@@ -1076,13 +1076,13 @@ class PyFingerprint(object):
         )
 
         self.__writePacket(FINGERPRINT_COMMANDPACKET, packetPayload)
-        print("up write: ")
-        print(packetPayload)
+        #print("up write: ")
+        #print(packetPayload)
         ## Get first reply packet
         receivedPacket = self.__readPacket()
 
-        print("up receive: ")
-        print(receivedPacket)
+        #print("up receive: ")
+        #print(receivedPacket)
 
         receivedPacketType = receivedPacket[0]
         receivedPacketPayload = receivedPacket[1]
@@ -1114,7 +1114,7 @@ class PyFingerprint(object):
                 lfrom = (i-1) * maxPacketSize
                 lto = lfrom + maxPacketSize
                 self.__writePacket(FINGERPRINT_DATAPACKET, characteristicsData[lfrom:lto])
-                print(str(i) + str(FINGERPRINT_DATAPACKET) + str(lfrom) + str(lto))
+                #print(str(i) + str(FINGERPRINT_DATAPACKET) + str(lfrom) + str(lto))
                 i += 1
 
             lfrom = (i-1) * maxPacketSize
