@@ -33,10 +33,6 @@ handler.setFormatter(formatter)
 logging.root.addHandler(handler)
 logging.root.setLevel(logging.DEBUG)
 
-logging.debug('This message should go to the log file')
-logging.info('So should this')
-logging.warning('And this, too')
-
 f = None
 Verify = True
 wsconnected = 0
@@ -51,6 +47,10 @@ class Dbm():
         self.conn.execute("PRAGMA key='"+pragma+"'")
         self.conn.commit()
         self.cur = self.conn.cursor()
+
+    def queryOne(self, arg):
+        self.cur.execute(arg)
+        return self.cur.fetchone()
 
     def query(self, arg):
         self.cur.execute(arg)
@@ -148,6 +148,7 @@ def on_send(message):
       logging.debug("sent: "+message)
     except Exception as e:
       logging.exception('on_send: ' + str(e))
+      wsClient() 
 
 def on_message(ws, message):
     logging.debug("on_message: " + message)
@@ -420,23 +421,26 @@ def verify(f):
             }))
         else:
             dbm = Dbm()
-            rows = dbm.query("SELECT firstname, lastname \
+            row = dbm.queryOne("SELECT firstname, lastname, employees.employeeID \
                 FROM employees JOIN fingerprints \
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
 
-            for row in rows:
-              SocketHandler.send_to_all(json.dumps({
-                'message': 'identify-ok',
-                'name': row[0] +" "+ row[1],
-              }))
+            SocketHandler.send_to_all(json.dumps({
+              'message': 'identify-ok',
+              'name': row[0] +" "+ row[1],
+            }))
+
             if(wsconnected == 1):
                 on_send(json.dumps({
                     "topic": "sp:"+hw,
-                    "event":"new_msg",
-                    "payload":json.dumps({
+                    "event": "new_msg",
+                    "payload": json.dumps({
                         "type": "identify-ok",
-                        "id": int(positionNumber),
+                        "f_id": int(positionNumber),
+                        "employeeID": row[2],
+                        "devicegroup_id": int(devicegroup.id),
+                        "device_hw": hw
                     }),
                     "ref":""
                 }))
