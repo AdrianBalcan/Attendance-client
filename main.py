@@ -9,6 +9,7 @@ except ImportError:
 import sys
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import time
 import uuid
 import datetime
@@ -17,8 +18,25 @@ from pysqlcipher import dbapi2 as sqlite
 from tornado import websocket, web, ioloop
 from pyfingerprint.pyfingerprint import PyFingerprint
 
-DEBUG = False 
-#sys.settrace
+logfile_path = 'attendance-client.log'
+if 'debug' in sys.argv:
+    handler = logging.StreamHandler()
+else:
+    handler = RotatingFileHandler(logfile_path, maxBytes=10485760, 
+            backupCount=300, encoding='utf-8')
+formatter = logging.Formatter("[%(asctime)s] [%(name)s] \
+[%(funcName)s():%(lineno)s] \
+[PID:%(process)d TID:%(threadName)s;%(thread)d] \
+[%(levelname)s]:%(message)s", "%d/%m/%Y %H:%M:%S")
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(formatter)
+logging.root.addHandler(handler)
+logging.root.setLevel(logging.DEBUG)
+
+logging.debug('This message should go to the log file')
+logging.info('So should this')
+logging.warning('And this, too')
+
 f = None
 Verify = True
 wsconnected = 0
@@ -51,7 +69,7 @@ def createDB():
         dbm.query("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
         dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
     except Exception as e:
-        print str(e)
+        logging.exception("createDB: " + str(e))
 
 class DeviceGroup:
     def __init__(self):
@@ -127,14 +145,12 @@ def on_open(ws):
 def on_send(message):
     try:
       ws.send(message)
-      if DEBUG:
-          print("sent: "+message)
+      logging.debug("sent: "+message)
     except Exception as e:
-      print('---Exception message: ' + str(e))
+      logging.exception('on_send: ' + str(e))
 
 def on_message(ws, message):
-    if DEBUG:
-        print message
+    logging.debug("on_message: " + message)
     try:
         message = json.loads(message) 
         if "event" in message: 
@@ -186,7 +202,7 @@ def on_error(ws, error):
       time.sleep(10)
       wsClient()
     except Exception as e:
-      print('---Exception message: ' + str(e))
+      logging.exception('on_error: ' + str(e))
       time.sleep(10)
       wsClient()
 
@@ -200,7 +216,7 @@ def on_close(ws, status):
       time.sleep(10)
       wsClient()
     except Exception as e:
-      print('---Exception message: ' + str(e))
+      logging.exception('on_close: ' + str(e))
       time.sleep(10)
       wsClient()
 
@@ -214,7 +230,7 @@ def wsClient():
       ws.on_error = on_error
       ws.run_forever(ping_interval=10, ping_timeout=5)
     except Exception as e:
-      print('---Exception message: ' + str(e))
+      logging.exception('wsClient: ' + str(e))
       time.sleep(10)
       wsClient()
 
@@ -305,9 +321,8 @@ def fingerprint():
                 SocketHandler.send_to_all(json.dumps({
                     'message': 'no-fingerprint',
                 }))
-            if DEBUG:
-                print('The fingerprint sensor could not be initialized!')
-                print('Exception message: ' + str(e))
+                logging.warning('The fingerprint sensor could not be initialized!')
+                logging.warning('fingerprint: ' + str(e))
             time.sleep(20)
             sys.exc_clear()
             fingerprint()
@@ -319,14 +334,10 @@ def fingerprint():
     #f.clearDatabase()
     synchronize()
      
-    #print f.setSystemParameter(5, 1)
-    #print f.getTemplateIndex()
-    if DEBUG:
-        print('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
-        print f.getSystemParameters()
-    #f.loadTemplate(1,1) 
-    #wee = f.downloadCharacteristics(1) 
-    #print(wee)
+    #f.setSystemParameter(5, 1))
+    #f.getTemplateIndex())
+    logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
+    logging.info(f.getSystemParameters())
     verify(f)
 
 def changeSecurity(value):
@@ -342,7 +353,7 @@ def deleteFingerprint(ID):
         time.sleep(1)
         f.deleteTemplate(ID)
     except Exception as e:
-        print "Opss!" + str(e)
+        logging.exception("Opss!" + str(e))
         pass
     startVerify()
 
@@ -357,8 +368,7 @@ def synchronize():
     dbm = Dbm()
     rows = dbm.query("SELECT * FROM fingerprints;")
     for row in rows:
-        if DEBUG:
-            print row[0]
+        logging.debug(row[0])
         f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
         f.storeTemplate(row[0], 0x01)
     time.sleep(1)
@@ -382,8 +392,7 @@ def verify(f):
     try:
         global Verify
         global enrollStatus
-        if DEBUG:
-            print('Waiting for finger...%s' % enrollStatus)
+        logging.info('Waiting for finger...%s' % enrollStatus)
         SocketHandler.send_to_all(json.dumps({
             'message': 'clear',
         }))
@@ -405,8 +414,7 @@ def verify(f):
         accuracyScore = result[1]
     
         if(positionNumber == -1):
-            if DEBUG:
-              print("No match found!")
+            logging.info("No match found!")
             SocketHandler.send_to_all(json.dumps({
                 'message': 'identify-err',
             }))
@@ -434,28 +442,16 @@ def verify(f):
                 }))
             else:
               try:
-                dbm = Dbm()
-                dbm.query("INSERT into attendances values("+
-                    str(positionNumber) +",'"+
-                    str(datetime.datetime.now())+"')")
+                  dbm = Dbm()
+                  dbm.query("INSERT into attendances values("+
+                      str(positionNumber) +",'"+
+                      str(datetime.datetime.now())+"')")
               except Exception as e:
-                print("insert: %s" % str(e))
-	    if DEBUG:
-                print("Found template at position #" + str(positionNumber))
-                print("The accuracy score is: " + str(accuracyScore))
- 
-        ## OPTIONAL stuff
-        ##
-    
-        ## Loads the found template to charbuffer 1
-        # f.loadTemplate(positionNumber, 0x01)
-    
-        ## Downloads the characteristics of template loaded in charbuffer 1
-        #characterics = str(f.downloadCharacteristics(0x01))
-    
-        ## Hashes characteristics of template
-        #print('SHA-2 hash of template: ' + hashlib.sha256(characterics).hexdigest())
+                  logging.exception("insert: %s" % str(e))
 
+              logging.info("Found template at position #" + str(positionNumber))
+              logging.info("The accuracy score is: " + str(accuracyScore))
+ 
         while(f.readImage()==True or Verify == False):
             pass
         
@@ -466,8 +462,8 @@ def verify(f):
             SocketHandler.send_to_all(json.dumps({
                 'message': "no-fingerprint",
             }))
-        print("Operation failed!")
-        print("Exception message: " + str(e))
+        logging.warning("Operation failed!")
+        logging.exception("Exception message: " + str(e))
         sys.exc_clear()
         fingerprint()
 
@@ -475,8 +471,7 @@ def enroll(f):
     global enrollStatus
     ## Tries to enroll new finger
     try:
-        if DEBUG: 
-            print("Enrollment: Waiting for finger...")
+        logging.info("Enrollment: Waiting for finger...")
     
         SocketHandler.send_to_all(json.dumps({
             'message': 'enroll',
@@ -506,7 +501,7 @@ def enroll(f):
                 'enrollStep': 1,
                 'enrollName': employeeName,
             }))
-            print("Template already exists at position #" + str(positionNumber))
+            logging.info("Template already exists at position #" + str(positionNumber))
             while(f.readImage()==True):
                 pass
             time.sleep(2)
@@ -517,15 +512,13 @@ def enroll(f):
             'enrollStep': 1,
             'enrollName': employeeName,
         }))
-        if DEBUG:
-          print("Remove finger...")
+        logging.info("Remove finger...")
         while(f.readImage()==True):
             pass
         time.sleep(2)
     
 ##############################
-        if DEBUG:
-            print("Waiting for same finger again...")
+        logging.info("Waiting for same finger again...")
 
         SocketHandler.send_to_all(json.dumps({
             'message': 'enroll',
@@ -556,7 +549,7 @@ def enroll(f):
                 'enrollStep': 2,
                 'enrollName': employeeName,
             }))
-            print("Template already exists at position #" + str(positionNumber))
+            logging.debug("Template already exists at position #" + str(positionNumber))
             while(f.readImage()==True):
                 pass
             time.sleep(2)
@@ -567,15 +560,13 @@ def enroll(f):
             'enrollStep': 2,
             'enrollName': employeeName,
         }))
-        print("Remove finger...")
+        logging.debug("Remove finger...")
         while(f.readImage()==True):
             pass
         time.sleep(1)
         ## Compares the charbuffers and creates a template
         f.createTemplate()
         template = str(f.downloadCharacteristics(0x01))[1:-1]
-        #print(tst)
-        #f.uploadCharacteristics(0x01, tst) 
         ## Saves template at new position number
         positionNumber = f.storeTemplate()
         if(wsconnected == 1):
@@ -614,10 +605,9 @@ def enroll(f):
             dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
             dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
           except Exception as e:
-            print("insert: %s" % str(e))
-          if DEBUG:
-              print("Finger enrolled successfully!")
-              print("New template position #" + str(positionNumber))
+            logging.exception("insert: %s" % str(e))
+          logging.info("Finger enrolled successfully!")
+          logging.info("New template position #" + str(positionNumber))
           time.sleep(1)
           enrollStatus = False
           while(f.readImage()==False):
@@ -639,16 +629,9 @@ def enroll(f):
             SocketHandler.send_to_all(json.dumps({
                 'message': 'no-fingerprint',
             }))
-        print("Operation failed!")
-        print("Exception message: " + str(e))
+        logging.warning("Operation failed!")
+        logging.exception("Exception message: " + str(e))
         fingerprint()
-
-def getTemplateIndex(f):
-    try:
-        data = f.getTemplateIndex('1')
-        print('Template deleted! %s' % data)
-    except Exception as e:
-        print('Exception message: ' + str(e))
 
 def devicegroupUpdate():
     devicegroup.callUpdate()
