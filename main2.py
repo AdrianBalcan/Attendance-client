@@ -7,6 +7,8 @@ try:
 except ImportError:
     import _thread as thread
 import sys
+from sklearn.metrics import accuracy_score
+import random
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -103,8 +105,6 @@ class DeviceGroup:
     def check(self):
         dbm = Dbm()
         rows = dbm.query("SELECT devicegroup FROM configs WHERE id == 1;")
-       # sql = Sql()
-       # rows = sql.c.execute("SELECT devicegroup FROM configs WHERE id == 1;")
         for row in rows:
           self.id = row[0]
         if(self.id == 0):
@@ -409,11 +409,27 @@ def verify(f):
         f.convertImage(0x01)
     
         ## Searchs template
-        result = f.searchTemplate()
-    
-        positionNumber = result[0]
-        accuracyScore = result[1]
-    
+        #result = f.searchTemplate()
+        ch = f.downloadCharacteristics(0x01)
+        #positionNumber = result[0]
+        #accuracyScore = result[1]
+        positionNumber = -1
+        dbm = Dbm()
+        rows = dbm.query("SELECT * FROM fingerprints;")
+        for row in rows:
+           pass
+           # print row[0]
+           # print map(int, row[2].split(','))
+           # print len(map(int, row[2].split(',')))
+           #print map(int, row[2].split(','))
+           print "id:" + str(row[0])
+           #print("accuracy: "+str(accuracy_score(ch, map(int, row[2].split(','))[:128]))) 
+           tmpl = map(int, row[2].split(','))
+           diff = [abs(x - y) for x, y in zip(ch[:16], tmpl[:16])]
+           sum(diff)
+           print sum(diff) 
+           # print("accuracy: "+str(accuracy_score(row[2], ch, normalize=False)))
+
         if(positionNumber == -1):
             logging.info("No match found!")
             SocketHandler.send_to_all(json.dumps({
@@ -431,30 +447,6 @@ def verify(f):
               'name': row[0] +" "+ row[1],
             }))
 
-            if(wsconnected == 1):
-                on_send(json.dumps({
-                    "topic": "sp:"+hw,
-                    "event": "new_msg",
-                    "payload": json.dumps({
-                        "type": "identify-ok",
-                        "f_id": int(positionNumber),
-                        "employeeID": row[2],
-                        "devicegroup_id": int(devicegroup.id),
-                        "device_hw": hw
-                    }),
-                    "ref":""
-                }))
-            else:
-              try:
-                  dbm = Dbm()
-                  dbm.query("INSERT into attendances values("+
-                      str(positionNumber) +",'"+
-                      str(datetime.datetime.now())+"')")
-              except Exception as e:
-                  logging.exception("insert: %s" % str(e))
-
-              logging.info("Found template at position #" + str(positionNumber))
-              logging.info("The accuracy score is: " + str(accuracyScore))
  
         while(f.readImage()==True or Verify == False):
             pass
@@ -494,140 +486,148 @@ def enroll(f):
     
         ## Converts read image to characteristics and stores it in charbuffer 1
         f.convertImage(0x01)
-    
-        ## Checks if finger is already enrolled
-        result = f.searchTemplate()
-        positionNumber = result[0]
-    
-        if( positionNumber >= 0):
-            SocketHandler.send_to_all(json.dumps({
-                'message': 'enroll-exist',
-                'enrollStep': 1,
-                'enrollName': employeeName,
-            }))
-            logging.info("Template already exists at position #" + str(positionNumber))
-            while(f.readImage()==True):
-                pass
-            time.sleep(2)
-            enroll(f)
-    
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'enroll-ok',
-            'enrollStep': 1,
-            'enrollName': employeeName,
-        }))
-        logging.info("Remove finger...")
-        while(f.readImage()==True):
-            pass
-        time.sleep(2)
+        template = str(f.downloadCharacteristics())[1:-1]
+        print template
+        positionNumber = random.randint(1, 1000)
+        print positionNumber
+        dbm = Dbm()
+        dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
+        dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
+        verify(f)        
+#    
+#        ## Checks if finger is already enrolled
+#        result = f.searchTemplate()
+#        positionNumber = result[0]
+#    
+#        if( positionNumber >= 0):
+#            SocketHandler.send_to_all(json.dumps({
+#                'message': 'enroll-exist',
+#                'enrollStep': 1,
+#                'enrollName': employeeName,
+#            }))
+#            logging.info("Template already exists at position #" + str(positionNumber))
+#            while(f.readImage()==True):
+#                pass
+#            time.sleep(2)
+#            enroll(f)
+#    
+#        SocketHandler.send_to_all(json.dumps({
+#            'message': 'enroll-ok',
+#            'enrollStep': 1,
+#            'enrollName': employeeName,
+#        }))
+#        logging.info("Remove finger...")
+#        while(f.readImage()==True):
+#            pass
+#        time.sleep(2)
     
 ##############################
-        logging.info("Waiting for same finger again...")
-
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'enroll',
-            'enrollStep': 2,
-            'enrollName': employeeName,
-        }))
-    
-        ## Wait that finger is read again
-        while(f.readImage()==False or enrollStatus==False):
-            if(enrollStatus == True):
-                pass
-            else:
-                SocketHandler.send_to_all(json.dumps({
-                    'message': 'clear',
-                }))
-                verify(f)
-    
-        ## Converts read image to characteristics and stores it in charbuffer 2
-        f.convertImage(0x02)
-
-        ## Checks if finger is already enrolled
-        result = f.searchTemplate(0x02)
-        positionNumber = result[0]
-    
-        if(positionNumber >= 0):
-            SocketHandler.send_to_all(json.dumps({
-                'message': 'enroll-exist',
-                'enrollStep': 2,
-                'enrollName': employeeName,
-            }))
-            logging.debug("Template already exists at position #" + str(positionNumber))
-            while(f.readImage()==True):
-                pass
-            time.sleep(2)
-            enroll(f)
-
-        SocketHandler.send_to_all(json.dumps({
-            'message': 'enroll-ok',
-            'enrollStep': 2,
-            'enrollName': employeeName,
-        }))
-        logging.debug("Remove finger...")
-        while(f.readImage()==True):
-            pass
-        time.sleep(1)
-        ## Compares the charbuffers and creates a template
-        f.createTemplate()
-        template = str(f.downloadCharacteristics(0x01))[1:-1]
-        ## Saves template at new position number
-        positionNumber = f.storeTemplate()
-        if(wsconnected == 1):
-          try:
-            on_send(json.dumps({
-                "topic": "sp:"+hw,
-                "event":"new_msg",
-                "payload":json.dumps({
-                    "type": "enroll-ok",
-                    "f_id": int(positionNumber),
-                    "employeeID": employeeID,
-                    "template": template,
-                }),
-                "ref":""
-            }))
-          except Exception as e:
-            f.deleteTemplate(positionNumber)
-            SocketHandler.send_to_all(json.dumps({
-                'message': 'enroll-fail',
-                'enrollStep': 2,
-                'enrollName': employeeName,
-            }))
-            time.sleep(4)
-            enrollStatus = False
-            while(f.readImage()==False):
-              verify(f) 
-
-          SocketHandler.send_to_all(json.dumps({
-              'message': 'enroll-successful',
-              'enrollStep': 2,
-              'enrollName': employeeName,
-          }))
-
-          try:
-            dbm = Dbm()
-            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
-            dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
-          except Exception as e:
-            logging.exception("insert: %s" % str(e))
-          logging.info("Finger enrolled successfully!")
-          logging.info("New template position #" + str(positionNumber))
-          time.sleep(1)
-          enrollStatus = False
-          while(f.readImage()==False):
-            verify(f) 
-        else:
-          f.deleteTemplate(positionNumber)
-          SocketHandler.send_to_all(json.dumps({
-              'message': 'enroll-fail',
-              'enrollStep': 2,
-              'enrollName': employeeName,
-          }))
-          time.sleep(4)
-          enrollStatus = False
-          while(f.readImage()==False):
-            verify(f) 
-    
+#        logging.info("Waiting for same finger again...")
+#
+#        SocketHandler.send_to_all(json.dumps({
+#            'message': 'enroll',
+#            'enrollStep': 2,
+#            'enrollName': employeeName,
+#        }))
+#    
+#        ## Wait that finger is read again
+#        while(f.readImage()==False or enrollStatus==False):
+#            if(enrollStatus == True):
+#                pass
+#            else:
+#                SocketHandler.send_to_all(json.dumps({
+#                    'message': 'clear',
+#                }))
+#                verify(f)
+#    
+#        ## Converts read image to characteristics and stores it in charbuffer 2
+#        f.convertImage(0x02)
+#
+#        ## Checks if finger is already enrolled
+#        result = f.searchTemplate(0x02)
+#        positionNumber = result[0]
+#    
+#        if(positionNumber >= 0):
+#            SocketHandler.send_to_all(json.dumps({
+#                'message': 'enroll-exist',
+#                'enrollStep': 2,
+#                'enrollName': employeeName,
+#            }))
+#            logging.debug("Template already exists at position #" + str(positionNumber))
+#            while(f.readImage()==True):
+#                pass
+#            time.sleep(2)
+#            enroll(f)
+#
+#        SocketHandler.send_to_all(json.dumps({
+#            'message': 'enroll-ok',
+#            'enrollStep': 2,
+#            'enrollName': employeeName,
+#        }))
+#        logging.debug("Remove finger...")
+#        while(f.readImage()==True):
+#            pass
+#        time.sleep(1)
+#        ## Compares the charbuffers and creates a template
+#        #f.createTemplate()
+#        template = str(f.downloadCharacteristics(0x02))[1:-1]
+#        ## Saves template at new position number
+#        positionNumber = f.storeTemplate(-1, 0x02)
+#        if(wsconnected == 1):
+#          try:
+#            on_send(json.dumps({
+#                "topic": "sp:"+hw,
+#                "event":"new_msg",
+#                "payload":json.dumps({
+#                    "type": "enroll-ok",
+#                    "f_id": int(positionNumber),
+#                    "employeeID": employeeID,
+#                    "template": template,
+#                }),
+#                "ref":""
+#            }))
+#          except Exception as e:
+#            f.deleteTemplate(positionNumber)
+#            SocketHandler.send_to_all(json.dumps({
+#                'message': 'enroll-fail',
+#                'enrollStep': 2,
+#                'enrollName': employeeName,
+#            }))
+#            time.sleep(4)
+#            enrollStatus = False
+#            while(f.readImage()==False):
+#              verify(f) 
+#
+#          SocketHandler.send_to_all(json.dumps({
+#              'message': 'enroll-successful',
+#              'enrollStep': 2,
+#              'enrollName': employeeName,
+#          }))
+#
+#          try:
+#            dbm = Dbm()
+#            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
+#            dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
+#          except Exception as e:
+#            logging.exception("insert: %s" % str(e))
+#          logging.info("Finger enrolled successfully!")
+#          logging.info("New template position #" + str(positionNumber))
+#          time.sleep(1)
+#          enrollStatus = False
+#          while(f.readImage()==False):
+#            verify(f) 
+#        else:
+#          f.deleteTemplate(positionNumber)
+#          SocketHandler.send_to_all(json.dumps({
+#              'message': 'enroll-fail',
+#              'enrollStep': 2,
+#              'enrollName': employeeName,
+#          }))
+#          time.sleep(4)
+#          enrollStatus = False
+#          while(f.readImage()==False):
+#            verify(f) 
+#    
     except Exception as e:
         if(devicegroup.id > 0):
             SocketHandler.send_to_all(json.dumps({
