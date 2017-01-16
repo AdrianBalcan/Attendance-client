@@ -71,6 +71,24 @@ def createDB():
     except Exception as e:
         logging.exception("createDB: " + str(e))
 
+def alterDB():
+    try:
+        dbm = Dbm()
+        dbm.query("ALTER TABLE employees ADD COLUMN status int")
+    except Exception as e:
+        logging.exception("alterDb: " + str(e))
+
+def employeeStatus(id, status):
+    if "IN" in status:
+        s = 1
+    elif "OUT" in status:
+        s = 0
+    try:
+        dbm = Dbm()
+        dbm.query("UPDATE employees SET status = "+str(s)+" where employeeID = "+str(id))
+    except Exception as e:
+        logging.exception("employeeStatus" + str(e))
+
 class DeviceGroup:
     def __init__(self):
         self.id = 0
@@ -95,10 +113,6 @@ class DeviceGroup:
     def update(self, id):
         dbm = Dbm()
         dbm.query("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
-      #  sql = Sql()
-      #  sql.c.execute("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
-      #  sql.conn.commit()
-      #  self.check()
 
     def check(self):
         dbm = Dbm()
@@ -187,7 +201,14 @@ def on_message(ws, message):
               if(message["payload"]["response"]["type"] == "devicegroup-create"):
                 if(message["payload"]["response"]["result"]):
                   devicegroup.update(int(message["payload"]["response"]["result"]))
+                  devicegroup.check()
               if(message["payload"]["response"]["type"] == "devicegroup"):
+                if(message["payload"]["response"]["result"]):
+                  devicegroup.update(message["payload"]["response"]["result"][0])
+                  devicegroup.check()
+              if(message["payload"]["response"]["type"] == "identify-ok"):
+                  employeeStatus(message["payload"]["response"]["employeeID"], message["payload"]["response"]["result"])
+              if(message["payload"]["response"]["type"] == "employees-status"):
                 if(message["payload"]["response"]["result"]):
                   devicegroup.update(message["payload"]["response"]["result"][0])
     except:
@@ -376,8 +397,11 @@ def synchronize():
     startVerify()
 
 def stopVerify():
+    while(enrollStatus==True):
+        time.sleep(.1)
     global Verify
     Verify = False
+    time.sleep(5)
 
 def startVerify():
     global Verify
@@ -399,10 +423,10 @@ def verify(f):
         }))
 
         ## Wait that finger is read
-        while( f.readImage()==False or enrollStatus==True or Verify == False):
+        while(f.readImage()==False or enrollStatus==True or Verify == False):
             while(Verify == False):
                 time.sleep(.1)
-            if( enrollStatus == True):
+            if(enrollStatus == True):
                 enroll(f)
     
         ## Converts read image to characteristics and stores it in charbuffer 1
@@ -421,7 +445,8 @@ def verify(f):
             }))
         else:
             dbm = Dbm()
-            row = dbm.queryOne("SELECT firstname, lastname, employees.employeeID \
+            row = dbm.queryOne("SELECT firstname, lastname, status, \
+                employees.employeeID \
                 FROM employees JOIN fingerprints \
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
@@ -429,6 +454,7 @@ def verify(f):
             SocketHandler.send_to_all(json.dumps({
               'message': 'identify-ok',
               'name': row[0] +" "+ row[1],
+              'status': row[2],
             }))
 
             if(wsconnected == 1):
@@ -438,7 +464,7 @@ def verify(f):
                     "payload": json.dumps({
                         "type": "identify-ok",
                         "f_id": int(positionNumber),
-                        "employeeID": row[2],
+                        "employeeID": row[3],
                         "devicegroup_id": int(devicegroup.id),
                         "device_hw": hw
                     }),
@@ -457,6 +483,8 @@ def verify(f):
               logging.info("The accuracy score is: " + str(accuracyScore))
  
         while(f.readImage()==True or Verify == False):
+            while(Verify == False):
+                time.sleep(.1)
             pass
         
         verify(f)
@@ -519,7 +547,7 @@ def enroll(f):
         logging.info("Remove finger...")
         while(f.readImage()==True):
             pass
-        time.sleep(2)
+        time.sleep(1)
     
 ##############################
         logging.info("Waiting for same finger again...")
@@ -567,7 +595,7 @@ def enroll(f):
         logging.debug("Remove finger...")
         while(f.readImage()==True):
             pass
-        time.sleep(1)
+        #time.sleep()
         ## Compares the charbuffers and creates a template
         f.createTemplate()
         template = str(f.downloadCharacteristics(0x01))[1:-1]
@@ -593,10 +621,18 @@ def enroll(f):
                 'enrollStep': 2,
                 'enrollName': employeeName,
             }))
-            time.sleep(4)
+            time.sleep(2)
             enrollStatus = False
             while(f.readImage()==False):
               verify(f) 
+
+          try:
+            dbm = Dbm()
+            #TODO: fix status value
+            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"', 0)")
+            dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
+          except Exception as e:
+            logging.exception("insert: %s" % str(e))
 
           SocketHandler.send_to_all(json.dumps({
               'message': 'enroll-successful',
@@ -604,18 +640,11 @@ def enroll(f):
               'enrollName': employeeName,
           }))
 
-          try:
-            dbm = Dbm()
-            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"')")
-            dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
-          except Exception as e:
-            logging.exception("insert: %s" % str(e))
           logging.info("Finger enrolled successfully!")
           logging.info("New template position #" + str(positionNumber))
-          time.sleep(1)
           enrollStatus = False
           while(f.readImage()==False):
-            verify(f) 
+            verify(f)
         else:
           f.deleteTemplate(positionNumber)
           SocketHandler.send_to_all(json.dumps({
@@ -623,7 +652,7 @@ def enroll(f):
               'enrollStep': 2,
               'enrollName': employeeName,
           }))
-          time.sleep(4)
+          time.sleep(2)
           enrollStatus = False
           while(f.readImage()==False):
             verify(f) 
@@ -644,10 +673,11 @@ def devicegroupUpdate():
 
 if __name__ == '__main__':
     createDB()
+    alterDB()
     devicegroup = DeviceGroup()
     Thread(target = wsClient).start()
 
     #init DeviceGroup class an check it which is included in __init__ method
     Thread(name='httpServer', target = httpServer).start()
     Thread(name='fingerprint', target = fingerprint).start()
-    Thread(name='devicegroupUpdate', target = devicegroupUpdate).start()
+    #Thread(name='devicegroupUpdate', target = devicegroupUpdate).start()
