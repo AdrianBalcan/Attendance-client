@@ -61,7 +61,7 @@ function startWebSocket(){
 		console.log("disconnected");
 		$('#connectionStatus').hide();
 		$('#disconnected').show();
-                wsReconnect = setTimeout(startWebSocket(), 5000);
+                wsReconnect = setTimeout(startWebSocket(), 3000);
         }
         ws.onmessage = function (data) {
                 data = JSON.parse(data.data);
@@ -109,11 +109,13 @@ function startWebSocket(){
                       notify("#202020", "Cod de activare a dispozitivului:</br>"+data.hw)
                       break;
                   case 'identify-ok':
-//     		        if(employee.inOut == 0){ 
-       			notify("green", data.name+", activitatea dvs. a fost inregistrata!</br>Va multumim!");
-//                      } else {
-//	                    notify("blue", "La revedere, "+employee.name);
-//                      }
+     		        if(data.status == 0){ 
+       			notify("green", data.name+", bine ai venit!");
+                        } else if(data.status == 1) {
+	                    notify("blue", "La revedere, "+data.name);
+                        } else {
+       			notify("orange", data.name+", activitatea dvs. a fost inregistrata!</br>Va multumim!");
+                        }
                         break;
                   case 'identify-err':
 		      notify("red", "Amprenta neidentificata! Incearca din nou!");
@@ -246,7 +248,7 @@ function startWebSocket(){
     function clearNotify(){
 	  clear = setTimeout(function(){
 	    $('#notify').hide();
-	}, 3000);
+	}, 2000);
     }
     function notifyTopBar(color, msg){
         $('#notifyTopBar').css("background-color", color);
