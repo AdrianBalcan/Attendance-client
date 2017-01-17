@@ -455,7 +455,7 @@ def verify(f):
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
 
-            if row[3] < 15:
+            if row[3] < 600:
                 logging.debug("Blocked by smartUpdate")
                 SocketHandler.send_to_all(json.dumps({
                     'message': 'smartUpdate',
