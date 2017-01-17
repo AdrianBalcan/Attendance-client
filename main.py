@@ -65,7 +65,7 @@ def createDB():
         dbm = Dbm()
         dbm.query("create table configs(id, fingerprints_limit int, devicegroup int, date text)")
         dbm.query("create table attendances(employeeID int, date text);")
-        dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text);")
+        dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text, status int);")
         dbm.query("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
         dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
     except Exception as e:
@@ -74,12 +74,14 @@ def createDB():
 def alterDB():
     try:
         dbm = Dbm()
-        dbm.query("ALTER TABLE employees ADD COLUMN status int")
+        dbm.query("ALTER TABLE employees ADD COLUMN smart_update_time text")
     except Exception as e:
         logging.exception("alterDb: " + str(e))
 
 def employeeStatus(id, status):
-    if "IN" in status:
+    if isinstance(status, int):
+        s = status
+    elif "IN" in status:
         s = 1
     elif "OUT" in status:
         s = 0
@@ -108,7 +110,9 @@ class DeviceGroup:
 
     def setSecurity(setSecurityID):
         if f is not None:
+            stopVerify()
             f.setSystemParameter(5, setSecurityID)
+            startVerify()
 
     def update(self, id):
         dbm = Dbm()
@@ -123,7 +127,7 @@ class DeviceGroup:
           self.id = row[0]
         if(self.id == 0):
             if bool(f):
-              stopVerify() 
+                stopVerify() 
             SocketHandler.send_to_all(json.dumps({
                 'message': 'no-devicegroup',
                 'hw': str(hw),
@@ -445,42 +449,62 @@ def verify(f):
             }))
         else:
             dbm = Dbm()
-            row = dbm.queryOne("SELECT firstname, lastname, status, \
+            row = dbm.queryOne("SELECT firstname, lastname, status, (strftime('%s', 'now') - smart_update_time) as smart_update_time, \
                 employees.employeeID \
                 FROM employees JOIN fingerprints \
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
 
-            SocketHandler.send_to_all(json.dumps({
-              'message': 'identify-ok',
-              'name': row[0] +" "+ row[1],
-              'status': row[2],
-            }))
-
-            if(wsconnected == 1):
-                on_send(json.dumps({
-                    "topic": "sp:"+hw,
-                    "event": "new_msg",
-                    "payload": json.dumps({
-                        "type": "identify-ok",
-                        "f_id": int(positionNumber),
-                        "employeeID": row[3],
-                        "devicegroup_id": int(devicegroup.id),
-                        "device_hw": hw
-                    }),
-                    "ref":""
+            if row[3] < 15:
+                logging.debug("Blocked by smartUpdate")
+                SocketHandler.send_to_all(json.dumps({
+                    'message': 'smartUpdate',
+                    'name': row[0] +" "+ row[1],
+                    'status': row[2],
                 }))
             else:
-              try:
-                  dbm = Dbm()
-                  dbm.query("INSERT into attendances values("+
-                      str(positionNumber) +",'"+
-                      str(datetime.datetime.now())+"')")
-              except Exception as e:
-                  logging.exception("insert: %s" % str(e))
+                dbm = Dbm()
+                dbm.query("UPDATE employees SET smart_update_time = strftime('%s','now') where employeeID = "+str(row[4]))
+                if row[2] == 1:
+                    status = 0
+                elif row[2] == 0:
+                    status = 1
 
-              logging.info("Found template at position #" + str(positionNumber))
-              logging.info("The accuracy score is: " + str(accuracyScore))
+                employeeStatus(row[4], status)
+                if(wsconnected == 1):
+                    SocketHandler.send_to_all(json.dumps({
+                        'message': 'identify-ok',
+                        'name': row[0] +" "+ row[1],
+                        'status': row[2],
+                    }))
+                    on_send(json.dumps({
+                        "topic": "sp:"+hw,
+                        "event": "new_msg",
+                        "payload": json.dumps({
+                            "type": "identify-ok",
+                            "f_id": int(positionNumber),
+                            "employeeID": row[4],
+                            "devicegroup_id": int(devicegroup.id),
+                            "device_hw": hw
+                        }),
+                        "ref":""
+                    }))
+                else:
+                    SocketHandler.send_to_all(json.dumps({
+                        'message': 'identify-ok',
+                        'name': row[0] +" "+ row[1],
+                        'status': 2,
+                    }))
+                    try:
+                        dbm = Dbm()
+                        dbm.query("INSERT into attendances values("+
+                            str(positionNumber) +",'"+
+                            str(datetime.datetime.now())+"')")
+                    except Exception as e:
+                        logging.exception("insert: %s" % str(e))
+
+            logging.info("Found template at position #" + str(positionNumber))
+            logging.info("The accuracy score is: " + str(accuracyScore))
  
         while(f.readImage()==True or Verify == False):
             while(Verify == False):
