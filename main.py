@@ -7,6 +7,8 @@ try:
 except ImportError:
     import _thread as thread
 import sys
+import os
+import pytz
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -37,7 +39,7 @@ f = None
 Verify = True
 wsconnected = 0
 hw = str(uuid.getnode())
-host = "ws://localhost:4000/socket/websocket/"
+host = "ws://"+os.environ["ATTD_HOST"]+":"+os.environ["ATTD_PORT"]+"/socket/websocket/"
 pragma = "0jFr90a"
 enrollStatus = False
 
@@ -67,7 +69,7 @@ def createDB():
         dbm.query("create table attendances(employeeID int, date text);")
         dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text, status int);")
         dbm.query("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
-        dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now())+"""')""")
+        dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now(pytz.timezone('Europe/Bucharest')))+"""')""")
     except Exception as e:
         logging.exception("createDB: " + str(e))
 
@@ -337,7 +339,7 @@ def fingerprint():
     if(devicegroup.id > 0):
         try:
             global f
-            f = PyFingerprint('/dev/cu.SLAB_USBtoUART', 57600, 0xFFFFFFFF, 0x00000000)
+            f = PyFingerprint(os.environ["ATTD_COM_PORT"], 57600, 0xFFFFFFFF, 0x00000000)
         
             if(f.verifyPassword() == False):
                 raise ValueError('The given fingerprint sensor password is wrong!')
@@ -449,13 +451,14 @@ def verify(f):
             }))
         else:
             dbm = Dbm()
-            row = dbm.queryOne("SELECT firstname, lastname, status, (strftime('%s', 'now') - smart_update_time) as smart_update_time, \
-                employees.employeeID \
+            row = dbm.queryOne("SELECT firstname, lastname, status, \
+                (strftime('%s', 'now') - smart_update_time) \
+                as smart_update_time, employees.employeeID \
                 FROM employees JOIN fingerprints \
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
 
-            if row[3] < 600:
+            if row[3] is not None and row[3] < 10:
                 logging.debug("Blocked by smartUpdate")
                 SocketHandler.send_to_all(json.dumps({
                     'message': 'smartUpdate',
@@ -485,7 +488,8 @@ def verify(f):
                             "f_id": int(positionNumber),
                             "employeeID": row[4],
                             "devicegroup_id": int(devicegroup.id),
-                            "device_hw": hw
+                            "device_hw": hw,
+                            "timestamp": str(datetime.datetime.now(pytz.timezone('Europe/Bucharest')))
                         }),
                         "ref":""
                     }))
@@ -499,7 +503,7 @@ def verify(f):
                         dbm = Dbm()
                         dbm.query("INSERT into attendances values("+
                             str(positionNumber) +",'"+
-                            str(datetime.datetime.now())+"')")
+                            str(datetime.datetime.now(pytz.timezone('Europe/Bucharest')))+"')")
                     except Exception as e:
                         logging.exception("insert: %s" % str(e))
 
@@ -653,7 +657,7 @@ def enroll(f):
           try:
             dbm = Dbm()
             #TODO: fix status value
-            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"', 0)")
+            dbm.query("insert or replace into employees values("+ str(employeeID) +",'" + str(employeeFirstname) +"','"+ str(employeeLastname)+"', 0, strftime('%s','now'))")
             dbm.query("insert or replace into fingerprints values("+ str(positionNumber) +", "+ str(employeeID) +", '"+str(template)+"')")
           except Exception as e:
             logging.exception("insert: %s" % str(e))

@@ -110,9 +110,9 @@ function startWebSocket(){
                       break;
                   case 'smartUpdate':
      		        if(data.status == 1){ 
-       			notify("#037046", data.name+", te-ai pontat deja in ultimele 10 minute.");
+       			notify("#037046", data.name+", activitatea dvs. a fost inregistrata in ultimele 10 minute.");
                         } else if(data.status == 0) {
-	                    notify("#032b70", "Te-ai pontat in ultimele 10 minute, "+data.name);
+	                    notify("#032b70", "Activitatea ta a fost inregistrata in ultimele 10 minute, "+data.name);
                         } else {
        			notify("orange", data.name+", activitatea dvs. a fost inregistrata!</br>Va multumim!");
                         }
