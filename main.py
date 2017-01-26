@@ -67,7 +67,7 @@ def createDB():
         dbm = Dbm()
         dbm.query("create table configs(id, fingerprints_limit int, devicegroup int, date text)")
         dbm.query("create table attendances(employeeID int, date text);")
-        dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text, status int);")
+        dbm.query("create table employees(employeeID int PRIMARY KEY, firstname text, lastname text, status int, smart_update_time text);")
         dbm.query("create table fingerprints(f_id int PRIMARY KEY, employeeID int, template text);")
         dbm.query("insert into configs values(1, 0, 0, '"+str(datetime.datetime.now(pytz.timezone('Europe/Bucharest')))+"""')""")
     except Exception as e:
@@ -76,7 +76,7 @@ def createDB():
 def alterDB():
     try:
         dbm = Dbm()
-        dbm.query("ALTER TABLE employees ADD COLUMN smart_update_time text")
+        #dbm.query("ALTER TABLE employees ADD COLUMN smart_update_time text")
     except Exception as e:
         logging.exception("alterDb: " + str(e))
 
@@ -158,7 +158,6 @@ def on_open(ws):
             "payload":"",
             "ref":""
         }))
-        time.sleep(1)
         devicegroup.callUpdate()
         callStatusSync()
 
@@ -187,6 +186,8 @@ def on_message(ws, message):
             if "type" in message["payload"]["response"]:
               if(message["payload"]["response"]["type"] == "deleteFingerprint"):
                   deleteFingerprint(message["payload"]["response"]["id"])
+              if(message["payload"]["response"]["type"] == "employeesSync"):
+                  employeesSync(message["payload"]["response"]["result"])
               if(message["payload"]["response"]["type"] == "statusSync"):
                   statusSync(message["payload"]["response"]["result"])
               if(message["payload"]["response"]["type"] == "synchronize"):
@@ -391,6 +392,19 @@ def deleteFingerprint(ID):
         logging.exception("Opss!" + str(e))
         pass
     startVerify()
+     
+def callEmployeesSync():
+    if wsconnected == 1:
+        on_send(json.dumps({
+            "topic": "sp:"+hw,
+            "event":"new_msg",
+            "payload":json.dumps({
+                "type": "employeesSync",
+                "devicegroup": int(devicegroup.id),
+                "hw": hw 
+            }),
+            "ref":""
+        }))
 
 def callStatusSync():
     if wsconnected == 1:
@@ -399,10 +413,31 @@ def callStatusSync():
             "event":"new_msg",
             "payload":json.dumps({
                 "type": "statusSync",
+                "devicegroup": int(devicegroup.id),
                 "hw": hw 
             }),
             "ref":""
         }))
+
+def employeesSync(data):
+    try:
+        dbm = Dbm()
+        dbm.query("DELETE FROM employees")
+        dbm.query("DELETE FROM fingerprints")
+    except Exception as e:
+        logging.exception("employeeSync query delete: "+str(e))
+    for employee in data:
+        if employee["employeeID"] is not None:
+            print employee["employeeID"]
+            s = 0
+            if "IN" in employee["status"]:
+                s = 1
+            try:
+                dbm = Dbm()
+                dbm.query("INSERT into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', "+str(s)+", '"+str(employee["inserted_at"])+"')")
+                dbm.query("INSERT into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
+            except Exception as e:
+                logging.exception("employeeSync: "+str(e))
 
 def statusSync(data):
     for status in data:
@@ -421,9 +456,11 @@ def synchronize():
     SocketHandler.send_to_all(json.dumps({
         'message': 'synchronize',
     }))
+    devicegroup.callUpdate()
     time.sleep(1)
+    callEmployeesSync()
+    time.sleep(2)
     f.clearDatabase()
-    #rows = Sql.c.execute("SELECT * FROM fingerprints;")
     dbm = Dbm()
     rows = dbm.query("SELECT * FROM fingerprints;")
     for row in rows:
@@ -489,7 +526,7 @@ def verify(f):
                 ON employees.employeeID = fingerprints.employeeID \
                 WHERE fingerprints.f_id == "+ str(positionNumber) +";")
 
-            if row[3] is not None and row[3] < 10:
+            if row[3] is not None and row[3] < 600:
                 logging.debug("Blocked by smartUpdate")
                 SocketHandler.send_to_all(json.dumps({
                     'message': 'smartUpdate',
