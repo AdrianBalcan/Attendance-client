@@ -119,6 +119,7 @@ class DeviceGroup:
     def update(self, id):
         dbm = Dbm()
         dbm.query("UPDATE configs SET devicegroup = %d WHERE id == 1" % id)
+        self.check()
 
     def check(self):
         dbm = Dbm()
@@ -159,6 +160,7 @@ def on_open(ws):
         }))
         time.sleep(1)
         devicegroup.callUpdate()
+        callStatusSync()
 
     thread.start_new_thread(run,())
 
@@ -185,6 +187,8 @@ def on_message(ws, message):
             if "type" in message["payload"]["response"]:
               if(message["payload"]["response"]["type"] == "deleteFingerprint"):
                   deleteFingerprint(message["payload"]["response"]["id"])
+              if(message["payload"]["response"]["type"] == "statusSync"):
+                  statusSync(message["payload"]["response"]["result"])
               if(message["payload"]["response"]["type"] == "synchronize"):
                   synchronize()
               if(message["payload"]["response"]["type"] == "enroll"):
@@ -336,7 +340,10 @@ def fingerprint():
     ## Search for a finger
     ##
     ## Tries to initialize the sensor
-    if(devicegroup.id > 0):
+    dbm = Dbm()
+    deviceGroupID = dbm.queryOne("SELECT devicegroup FROM configs WHERE id == 1")
+    logging.info(deviceGroupID)
+    if(deviceGroupID > 0):
         try:
             global f
             f = PyFingerprint(os.environ["ATTD_COM_PORT"], 57600, 0xFFFFFFFF, 0x00000000)
@@ -384,6 +391,30 @@ def deleteFingerprint(ID):
         logging.exception("Opss!" + str(e))
         pass
     startVerify()
+
+def callStatusSync():
+    if wsconnected == 1:
+        on_send(json.dumps({
+            "topic": "sp:"+hw,
+            "event":"new_msg",
+            "payload":json.dumps({
+                "type": "statusSync",
+                "hw": hw 
+            }),
+            "ref":""
+        }))
+
+def statusSync(data):
+    for status in data:
+        if status["employeeID"] is not None:
+            s = 0
+            if "IN" in status["status"]:
+                s = 1
+            try:
+                dbm = Dbm()
+                dbm.query("UPDATE employees SET status = "+str(s)+", smart_update_time = '"+str(status["inserted_at"])+"' where employeeID = "+str(status["employeeID"]))
+            except Exception as e:
+                logging.exception("statusSync: "+str(e))
 
 def synchronize():
     stopVerify()

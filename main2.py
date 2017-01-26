@@ -9,6 +9,7 @@ except ImportError:
 import sys
 from sklearn.metrics import accuracy_score
 import random
+import difflib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -407,15 +408,22 @@ def verify(f):
     
         ## Converts read image to characteristics and stores it in charbuffer 1
         f.convertImage(0x01)
-    
+        import numpy as np 
         ## Searchs template
-        #result = f.searchTemplate()
-        ch = f.downloadCharacteristics(0x01)
-        #positionNumber = result[0]
-        #accuracyScore = result[1]
         positionNumber = -1
+        result = f.searchTemplate()
+        ch = f.downloadCharacteristics(0x01)
+        #print ch[:56]
+     #   print ch[56:128]
+        positionNumber = result[0]
+        accuracyScore = result[1]
         dbm = Dbm()
         rows = dbm.query("SELECT * FROM fingerprints;")
+        def differenceImageV6(img1, img2):
+            a = img1-img2
+            b = np.uint8(img1<img2) * 254 + 1
+            return a * b
+
         for row in rows:
            pass
            # print row[0]
@@ -425,10 +433,15 @@ def verify(f):
            print "id:" + str(row[0])
            #print("accuracy: "+str(accuracy_score(ch, map(int, row[2].split(','))[:128]))) 
            tmpl = map(int, row[2].split(','))
-           diff = [abs(x - y) for x, y in zip(ch[:16], tmpl[:16])]
-           sum(diff)
-           print sum(diff) 
-           # print("accuracy: "+str(accuracy_score(row[2], ch, normalize=False)))
+           print np.sum(differenceImageV6(np.int_(ch), np.int_(tmpl)).astype('int64')) 
+           #print ch
+     #      print tmpl[56:128]
+     #      diff = [abs(x - y) for x, y in zip(ch[56:128], tmpl[56:128])]
+     #      print sum(diff) 
+     #      print set(ch[56:128]) & set(tmpl[56:128])
+     #      sm=difflib.SequenceMatcher(None,ch,tmpl)
+     #      print sm.ratio()
+           #print("accuracy: "+str(accuracy_score(tmpl[56:76], ch[56:76], normalize=False)))
 
         if(positionNumber == -1):
             logging.info("No match found!")
@@ -436,6 +449,8 @@ def verify(f):
                 'message': 'identify-err',
             }))
         else:
+            print positionNumber
+            print accuracyScore
             dbm = Dbm()
             row = dbm.queryOne("SELECT firstname, lastname, employees.employeeID \
                 FROM employees JOIN fingerprints \
