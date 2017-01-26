@@ -80,16 +80,21 @@ def alterDB():
     except Exception as e:
         logging.exception("alterDb: " + str(e))
 
-def employeeStatus(id, status):
-    if isinstance(status, int):
-        s = status
-    elif "IN" in status:
-        s = 1
-    elif "OUT" in status:
-        s = 0
+def employeeStatus(id, status, timestamp):
     try:
+        print timestamp
+        if isinstance(status, int):
+            s = status
+        elif "IN" in status:
+            s = 1
+        elif "OUT" in status:
+            s = 0
         dbm = Dbm()
-        dbm.query("UPDATE employees SET status = "+str(s)+" where employeeID = "+str(id))
+        if timestamp is "now":
+            dbm.query("UPDATE employees SET status = "+str(s)+", smart_update_time = strftime('%s','now') where employeeID = "+str(id))
+        else:
+            timestamp = time.mktime(datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f+02:00").timetuple())
+            dbm.query("UPDATE employees SET status = "+str(s)+", smart_update_time = "+str(timestamp)+" where employeeID = "+str(id))
     except Exception as e:
         logging.exception("employeeStatus" + str(e))
 
@@ -220,7 +225,7 @@ def on_message(ws, message):
                   devicegroup.update(message["payload"]["response"]["result"][0])
                   devicegroup.check()
               if(message["payload"]["response"]["type"] == "identify-ok"):
-                  employeeStatus(message["payload"]["response"]["employeeID"], message["payload"]["response"]["result"])
+                  employeeStatus(message["payload"]["response"]["employeeID"], message["payload"]["response"]["result"], message["payload"]["response"]["timestamp"])
               if(message["payload"]["response"]["type"] == "employees-status"):
                 if(message["payload"]["response"]["result"]):
                   devicegroup.update(message["payload"]["response"]["result"][0])
@@ -423,7 +428,6 @@ def callStatusSync():
 
 def enrollSync(employee):
     try:
-        print employee["employeeID"]
         dbm = Dbm()
         dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
         dbm.query("INSERT OR REPLACE into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
@@ -543,14 +547,14 @@ def verify(f):
                     'status': row[2],
                 }))
             else:
-                dbm = Dbm()
-                dbm.query("UPDATE employees SET smart_update_time = strftime('%s','now') where employeeID = "+str(row[4]))
+               # dbm = Dbm()
+               # dbm.query("UPDATE employees SET smart_update_time = strftime('%s','now') where employeeID = "+str(row[4]))
                 if row[2] == 1:
                     status = 0
                 elif row[2] == 0:
                     status = 1
 
-                employeeStatus(row[4], status)
+                employeeStatus(row[4], status, "now")
                 if(wsconnected == 1):
                     SocketHandler.send_to_all(json.dumps({
                         'message': 'identify-ok',
