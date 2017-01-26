@@ -164,7 +164,6 @@ def on_open(ws):
             "ref":""
         }))
         devicegroup.callUpdate()
-        callStatusSync()
 
     thread.start_new_thread(run,())
 
@@ -348,10 +347,10 @@ def fingerprint():
     ## Search for a finger
     ##
     ## Tries to initialize the sensor
-    dbm = Dbm()
-    deviceGroupID = dbm.queryOne("SELECT devicegroup FROM configs WHERE id == 1")
-    logging.info(deviceGroupID)
-    if(deviceGroupID > 0):
+    #dbm = Dbm()
+    #deviceGroupID = dbm.queryOne("SELECT devicegroup FROM configs WHERE id == 1")
+    logging.info(devicegroup.id)
+    if(devicegroup.id > 0):
         try:
             global f
             f = PyFingerprint(os.environ["ATTD_COM_PORT"], 57600, 0xFFFFFFFF, 0x00000000)
@@ -375,13 +374,15 @@ def fingerprint():
 
     ## Gets some sensor information
     #f.clearDatabase()
-    synchronize()
-     
-    #f.setSystemParameter(5, 1))
-    #f.getTemplateIndex())
-    logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
-    logging.info(f.getSystemParameters())
-    verify(f)
+    try:
+        #synchronize()
+        callEmployeesSync()
+    finally: 
+        #f.setSystemParameter(5, 1))
+        #f.getTemplateIndex())
+        logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
+        logging.info(f.getSystemParameters())
+        verify(f)
 
 def changeSecurity(value):
     stopVerify()
@@ -393,7 +394,6 @@ def deleteFingerprint(ID):
     try:
         dbm = Dbm()
         dbm.query("DELETE FROM fingerprints where f_id == %s" % ID)
-        time.sleep(1)
         f.deleteTemplate(ID)
     except Exception as e:
         logging.exception("Opss!" + str(e))
@@ -437,6 +437,10 @@ def enrollSync(employee):
     
 def employeesSync(data):
     try:
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'synchronize',
+        }))
+        stopVerify()
         dbm = Dbm()
         dbm.query("DELETE FROM employees")
         dbm.query("DELETE FROM fingerprints")
@@ -449,7 +453,21 @@ def employeesSync(data):
             dbm.query("INSERT into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
         except Exception as e:
             logging.exception("employeeSync: "+str(e))
-    callStatusSync()
+    f.clearDatabase()
+    dbm = Dbm()
+    rows = dbm.query("SELECT * FROM fingerprints;")
+    try:
+        for row in rows:
+            logging.debug(row[0])
+            f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
+            f.storeTemplate(row[0], 0x01)
+            time.sleep(.1)
+    finally:
+        SocketHandler.send_to_all(json.dumps({
+            'message': 'clear',
+        }))
+        startVerify()
+        callStatusSync()
 
 def statusSync(data):
     for status in data:
@@ -476,19 +494,21 @@ def synchronize():
     f.clearDatabase()
     dbm = Dbm()
     rows = dbm.query("SELECT * FROM fingerprints;")
-    for row in rows:
-        logging.debug(row[0])
-        f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
-        f.storeTemplate(row[0], 0x01)
-    time.sleep(1)
-    startVerify()
+    try:
+        for row in rows:
+            logging.debug(row[0])
+            f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
+            f.storeTemplate(row[0], 0x01)
+            time.sleep(.1)
+    finally:
+        startVerify()
 
 def stopVerify():
     while(enrollStatus==True):
         time.sleep(.1)
     global Verify
     Verify = False
-    time.sleep(5)
+    time.sleep(.1)
 
 def startVerify():
     global Verify
@@ -788,9 +808,10 @@ if __name__ == '__main__':
     createDB()
     alterDB()
     devicegroup = DeviceGroup()
-    Thread(target = wsClient).start()
+    Thread(name='wsClient', target = wsClient).start()
 
     #init DeviceGroup class an check it which is included in __init__ method
     Thread(name='httpServer', target = httpServer).start()
+    time.sleep(4)
     Thread(name='fingerprint', target = fingerprint).start()
     #Thread(name='devicegroupUpdate', target = devicegroupUpdate).start()
