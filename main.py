@@ -192,6 +192,8 @@ def on_message(ws, message):
                   statusSync(message["payload"]["response"]["result"])
               if(message["payload"]["response"]["type"] == "synchronize"):
                   synchronize()
+              if(message["payload"]["response"]["type"] == "enrollSync"):
+                  enrollSync(message["payload"]["response"])
               if(message["payload"]["response"]["type"] == "enroll"):
                   global enrollStatus
                   enrollStatus = True
@@ -419,6 +421,16 @@ def callStatusSync():
             "ref":""
         }))
 
+def enrollSync(employee):
+    try:
+        print employee["employeeID"]
+        dbm = Dbm()
+        dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
+        dbm.query("INSERT OR REPLACE into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
+    except Exception as e:
+        logging.exception("employeeSync: "+str(e))
+    callStatusSync()
+    
 def employeesSync(data):
     try:
         dbm = Dbm()
@@ -427,17 +439,13 @@ def employeesSync(data):
     except Exception as e:
         logging.exception("employeeSync query delete: "+str(e))
     for employee in data:
-        if employee["employeeID"] is not None:
-            print employee["employeeID"]
-            s = 0
-            if "IN" in employee["status"]:
-                s = 1
-            try:
-                dbm = Dbm()
-                dbm.query("INSERT into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', "+str(s)+", '"+str(employee["inserted_at"])+"')")
-                dbm.query("INSERT into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
-            except Exception as e:
-                logging.exception("employeeSync: "+str(e))
+        try:
+            dbm = Dbm()
+            dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
+            dbm.query("INSERT into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
+        except Exception as e:
+            logging.exception("employeeSync: "+str(e))
+    callStatusSync()
 
 def statusSync(data):
     for status in data:
@@ -446,8 +454,9 @@ def statusSync(data):
             if "IN" in status["status"]:
                 s = 1
             try:
+                inserted_at = time.mktime(datetime.datetime.strptime(status["inserted_at"], "%Y-%m-%dT%H:%M:%S.%f").timetuple()) 
                 dbm = Dbm()
-                dbm.query("UPDATE employees SET status = "+str(s)+", smart_update_time = '"+str(status["inserted_at"])+"' where employeeID = "+str(status["employeeID"]))
+                dbm.query("UPDATE employees SET status = "+str(s)+", smart_update_time = '"+str(inserted_at)+"' where employeeID = "+str(status["employeeID"]))
             except Exception as e:
                 logging.exception("statusSync: "+str(e))
 
@@ -707,6 +716,10 @@ def enroll(f):
                     "f_id": int(positionNumber),
                     "employeeID": employeeID,
                     "template": template,
+                    "devicegroup": devicegroup.id,
+                    "firstname": employeeFirstname,
+                    "lastname": employeeLastname,
+                    "hw": hw,
                 }),
                 "ref":""
             }))
