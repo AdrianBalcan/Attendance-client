@@ -228,8 +228,8 @@ def on_message(ws, message):
               if(message["payload"]["response"]["type"] == "employees-status"):
                 if(message["payload"]["response"]["result"]):
                   devicegroup.update(message["payload"]["response"]["result"][0])
-    except:
-        pass
+    except Exception as e:
+        logging.exception("on_message: "+str(e))
 
 def on_error(ws, error):
     global wsconnected
@@ -377,12 +377,15 @@ def fingerprint():
     try:
         #synchronize()
         callEmployeesSync()
+    except Exception as e:
+        logging.exception("fingerprint callEmployeesSync")
     finally: 
+        pass
         #f.setSystemParameter(5, 1))
         #f.getTemplateIndex())
-        logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
-        logging.info(f.getSystemParameters())
-        verify(f)
+        #logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
+        #logging.info(f.getSystemParameters())
+        #verify(f)
 
 def changeSecurity(value):
     stopVerify()
@@ -432,7 +435,7 @@ def enrollSync(employee):
         dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
         dbm.query("INSERT OR REPLACE into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
     except Exception as e:
-        logging.exception("employeeSync: "+str(e))
+        logging.exception("enrollSync: "+str(e))
     callStatusSync()
     
 def employeesSync(data):
@@ -444,30 +447,33 @@ def employeesSync(data):
         dbm = Dbm()
         dbm.query("DELETE FROM employees")
         dbm.query("DELETE FROM fingerprints")
-    except Exception as e:
-        logging.exception("employeeSync query delete: "+str(e))
-    for employee in data:
-        try:
-            dbm = Dbm()
+        f.clearDatabase()
+        for employee in data:
+            logging.info(employee["employeeID"])
             dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
             dbm.query("INSERT into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
-        except Exception as e:
-            logging.exception("employeeSync: "+str(e))
-    f.clearDatabase()
-    dbm = Dbm()
-    rows = dbm.query("SELECT * FROM fingerprints;")
-    try:
-        for row in rows:
-            logging.debug(row[0])
-            f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
-            f.storeTemplate(row[0], 0x01)
-            time.sleep(.1)
+            f.uploadCharacteristics(0x01, map(int, employee["template"].split(',')))
+            f.storeTemplate(employee["f_id"], 0x01)
+   # time.sleep(1)
+   # dbm = Dbm()
+   # rows = dbm.query("SELECT * FROM fingerprints;")
+   # try:
+   #     for row in rows:
+   #         logging.debug(row[0])
+   #         f.uploadCharacteristics(0x01, map(int, row[2].split(',')))
+   #         f.storeTemplate(row[0], 0x01)
+   #         time.sleep(.1)
+    except Exception as e:
+        logging.exception("employeesSync - uploadCh :"+str(e))
     finally:
         SocketHandler.send_to_all(json.dumps({
             'message': 'clear',
         }))
         startVerify()
         callStatusSync()
+        logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
+        logging.info(f.getSystemParameters())
+        verify(f)
 
 def statusSync(data):
     for status in data:
@@ -508,11 +514,13 @@ def stopVerify():
         time.sleep(.1)
     global Verify
     Verify = False
-    time.sleep(.1)
+    time.sleep(1)
 
 def startVerify():
     global Verify
+    time.sleep(1)
     Verify = True
+    time.sleep(1)
     SocketHandler.send_to_all(json.dumps({
         'message': 'clear',
     }))
