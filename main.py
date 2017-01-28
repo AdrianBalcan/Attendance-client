@@ -191,13 +191,13 @@ def on_message(ws, message):
               if(message["payload"]["response"]["type"] == "deleteFingerprint"):
                   deleteFingerprint(message["payload"]["response"]["id"])
               if(message["payload"]["response"]["type"] == "employeesSync"):
-                  employeesSync(message["payload"]["response"]["result"])
+                  Thread(name='employeesSync', target = employeesSync, args=[message["payload"]["response"]["result"]]).start()
               if(message["payload"]["response"]["type"] == "statusSync"):
-                  statusSync(message["payload"]["response"]["result"])
+                  Thread(name='statusSync', target = statusSync, args=[message["payload"]["response"]["result"]]).start()
               if(message["payload"]["response"]["type"] == "synchronize"):
                   synchronize()
               if(message["payload"]["response"]["type"] == "enrollSync"):
-                  enrollSync(message["payload"]["response"])
+                  Thread(name='enrollSync', target = enrollSync, args=[message["payload"]["response"]]).start()
               if(message["payload"]["response"]["type"] == "enroll"):
                   global enrollStatus
                   enrollStatus = True
@@ -473,7 +473,7 @@ def employeesSync(data):
         callStatusSync()
         logging.info('Currently used templates: ' + str(f.getTemplateCount()) +'/'+ str(f.getStorageCapacity()))
         logging.info(f.getSystemParameters())
-        verify(f)
+        Thread(name='fingerprint', target = verify, args=[f]).start()
 
 def statusSync(data):
     for status in data:
@@ -552,6 +552,8 @@ def verify(f):
     
         positionNumber = result[0]
         accuracyScore = result[1]
+        print str(f.downloadCharacteristics(0x01))
+
     
         if(positionNumber == -1):
             logging.info("No match found!")
