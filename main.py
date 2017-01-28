@@ -437,10 +437,10 @@ def enrollSync(employee):
         stopVerify()
         f.uploadCharacteristics(0x01, map(int, employee["template"].split(',')))
         f.storeTemplate(employee["f_id"], 0x01)
+        callStatusSync()
         startVerify()
     except Exception as e:
         logging.exception("enrollSync: "+str(e))
-    callStatusSync()
     
 def employeesSync(data):
     try:
@@ -483,7 +483,7 @@ def statusSync(data):
     for status in data:
         if status["employeeID"] is not None:
             s = 0
-            if "IN" in status["status"]:
+            if status["status"] is not None and "IN" in status["status"]:
                 s = 1
             try:
                 inserted_at = time.mktime(datetime.datetime.strptime(status["inserted_at"], "%Y-%m-%dT%H:%M:%S.%f").timetuple()) 
