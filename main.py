@@ -353,7 +353,7 @@ def fingerprint():
     if(devicegroup.id > 0):
         try:
             global f
-            f = PyFingerprint(os.environ["ATTD_COM_PORT"], 57600, 0xFFFFFFFF, 0x00000000)
+            f = PyFingerprint(os.environ["ATTD_COM_PORT"], 115200, 0xFFFFFFFF, 0x00000000)
         
             if(f.verifyPassword() == False):
                 raise ValueError('The given fingerprint sensor password is wrong!')
