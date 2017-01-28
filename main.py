@@ -434,6 +434,10 @@ def enrollSync(employee):
         dbm = Dbm()
         dbm.query("INSERT OR REPLACE into employees VALUES ("+str(employee["employeeID"])+", '"+str(employee["firstname"])+"', '"+str(employee["lastname"])+"', 0, '')")
         dbm.query("INSERT OR REPLACE into fingerprints VALUES ("+str(employee["f_id"])+", "+str(employee["employeeID"])+", '"+str(employee["template"])+"')")
+        stopVerify()
+            f.uploadCharacteristics(0x01, map(int, employee["template"].split(',')))
+            f.storeTemplate(employee["f_id"], 0x01)
+        startVerify()
     except Exception as e:
         logging.exception("enrollSync: "+str(e))
     callStatusSync()
