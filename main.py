@@ -713,6 +713,18 @@ def enroll(f):
     
         ## Converts read image to characteristics and stores it in charbuffer 2
         f.convertImage(0x02)
+        if(f.compareCharacteristics() == 0):
+            SocketHandler.send_to_all(json.dumps({
+                'message': 'enroll-no-match',
+                'enrollStep': 2,
+                'enrollName': employeeName,
+            }))
+            logging.debug("Fingerprints no match!")
+            while(f.readImage()==True):
+                pass
+            time.sleep(2)
+            enroll(f)
+
 
         ## Checks if finger is already enrolled
         result = f.searchTemplate(0x02)

@@ -95,6 +95,9 @@ function startWebSocket(){
                   case 'enroll-successful':
                     notify('green', "Amprenta a fost inregistrata in sistem! Va multumim!", data.enrollName);
                     break;
+                  case 'enroll-no-match':
+                    notify('orange', "Amprentele nu coincid! Va rog incercati din nou cu mai multa atentie!");
+                    break;
                   case 'enroll-fail':
                     notify('orange', "Adaugarea de amprente nu este posibila cand conexiunea cu serverul este inexistenta. Va rugam incercati mai tarziu!");
                     break;
