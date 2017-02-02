@@ -336,6 +336,7 @@ app = web.Application([
     (r'/ws', SocketHandler),
     (r'/api', ApiHandler),
     (r'/js/(.*)', web.StaticFileHandler, {'path': 'public/js/'}),
+    (r'/images/(.*)', web.StaticFileHandler, {'path': 'public/images/'}),
     (r'/css/(.*)', web.StaticFileHandler, {'path': 'public/css/'}),
 ])
 
